@@ -8,6 +8,7 @@ import uuid
 import threading
 import shutil
 from datetime import datetime
+from global_land_mask import globe
 
 router = APIRouter(prefix="/api/v1/tracker")
 
@@ -83,6 +84,12 @@ async def add_search(box: SearchBox):
     if not box.coordinates:
         raise HTTPException(status_code=400, detail="Coordinates array cannot be empty.")
         
+    # Validation: Ensure points do not intersect landmass
+    for pt in box.coordinates:
+        # pt is [longitude, latitude]
+        if globe.is_land(pt[1], pt[0]):
+            raise HTTPException(status_code=400, detail="Deployment Target Error: Sector intersects landmass. Drift analysis must be strictly oceanic.")
+            
     # Calculate center of box
     lon_sum = sum([pt[0] for pt in box.coordinates])
     lat_sum = sum([pt[1] for pt in box.coordinates])
