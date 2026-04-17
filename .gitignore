@@ -41,4 +41,4 @@ MARIDA/
 .planning/metrics/
 
 # Node (for future frontend)
-node_modules/
+node_modules/.tmp_e2e/
