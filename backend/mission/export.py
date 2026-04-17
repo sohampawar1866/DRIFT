@@ -280,3 +280,40 @@ def export_pdf(mission: MissionPlan,
     ))
     doc.build(story)
     return path
+
+
+# ---------- CLI ----------
+def _cli() -> int:
+    import argparse
+    from backend.core.schemas import MissionPlan, ForecastEnvelope
+
+    ap = argparse.ArgumentParser(
+        prog="python -m backend.mission.export",
+        description="Export a MissionPlan as GPX, GeoJSON, or PDF.",
+    )
+    ap.add_argument("--mission", type=Path, required=True,
+                    help="Path to a JSON file containing a pydantic-serialized MissionPlan")
+    ap.add_argument("--forecast", type=Path, default=None,
+                    help="Optional ForecastEnvelope JSON (PDF uses +72h density overlay + currents table)")
+    ap.add_argument("--format", choices=("gpx", "geojson", "pdf"), required=True)
+    ap.add_argument("--out", type=Path, required=True)
+    args = ap.parse_args()
+
+    mission = MissionPlan.model_validate_json(args.mission.read_text(encoding="utf-8"))
+    forecast = None
+    if args.forecast is not None:
+        forecast = ForecastEnvelope.model_validate_json(
+            args.forecast.read_text(encoding="utf-8"))
+
+    if args.format == "gpx":
+        export_gpx(mission, args.out)
+    elif args.format == "geojson":
+        export_geojson(mission, args.out)
+    else:
+        export_pdf(mission, forecast, args.out)
+    print(f"wrote {args.out}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_cli())
