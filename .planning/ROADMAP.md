@@ -72,7 +72,7 @@ Note on INFRA-05: the original traceability mapping places INFRA-05 in Phase 3. 
 
 Plans:
 - [ ] 02-01-env-data-config-PLAN.md — Wave 1: backend/physics/env_data.py EnvStack (CMEMS+ERA5 loader, lon norm, time-axis assert, wind standard_name check) + mission.avg_speed_kmh config + INFRA-05 checkpoints dir prep
-- [ ] 02-02-mission-scoring-PLAN.md — Wave 1: backend/mission/scoring.py priority scoring primitives (haversine, density_at, convergence_ratio, priority_score per D-12)
+- [x] 02-02-mission-scoring-PLAN.md — Wave 1: backend/mission/scoring.py priority scoring primitives (haversine, density_at, convergence_ratio, priority_score per D-12)
 - [ ] 02-03-tracker-PLAN.md — Wave 2: backend/physics/tracker.py real Euler Lagrangian tracker (UTM-meter integration, beach-on-NaN, 90%/75% KDE at hours {24,48,72}) + PHYS-04 synthetic 43.2 km gate test
 - [ ] 02-04-mission-planner-PLAN.md — Wave 2: backend/mission/planner.py + tsp.py greedy+2-opt TSP with dual (range+time) budget enforcement, never-raise contract, 5 edge-case tests (MISSION-02 gate)
 - [ ] 02-05-fetch-real-e2e-PLAN.md — Wave 3: scripts/fetch_demo_env.py (CMEMS+ERA5 pre-stage, fail-loud creds) + scripts/run_full_chain_dummy.py E2E driver + PHYS-05 real-data smoke test

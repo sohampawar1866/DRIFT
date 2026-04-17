@@ -42,7 +42,7 @@ Core scaffolding that every downstream module consumes. Cannot be deferred.
 
 ### Mission Planning (MISSION)
 
-- [ ] **MISSION-01**: `backend/mission/scoring.py` — priority score per detection = `conf_adj × area_m2 × fraction_plastic × forecast_convergence_bonus`. Forecast-convergence bonus favors hotspots where the +72 h KDE density is *higher* than +0 h (debris concentrating, not dispersing).
+- [x] **MISSION-01**: `backend/mission/scoring.py` — priority score per detection = `conf_adj × area_m2 × fraction_plastic × forecast_convergence_bonus`. Forecast-convergence bonus favors hotspots where the +72 h KDE density is *higher* than +0 h (debris concentrating, not dispersing).
 - [ ] **MISSION-02**: `backend/mission/planner.py` — `plan_mission(forecast, vessel_range_km, hours, origin_lonlat, cfg) -> MissionPlan`. Greedy nearest-neighbor TSP with 2-opt improvement; enforces vessel range AND time budget (prune tour when cumulative distance × avg speed exceeds `hours`). Returns ordered waypoints + `LineString` route + summary.
 - [ ] **MISSION-03**: `backend/mission/export.py` — exports GPX (`togpx`), GeoJSON (pydantic `.model_dump_json()`), and **printable PDF briefing** (`matplotlib` + `reportlab`: vessel route over EEZ map, waypoint table, ETA, fuel estimate, wind/current conditions at each stop). PDF is the differentiator for judging.
 
@@ -120,7 +120,7 @@ Confirmed during roadmap creation 2026-04-17. All 25 v1 requirements map to exac
 | PHYS-03 | Phase 2 | Pending |
 | PHYS-04 | Phase 2 | Pending |
 | PHYS-05 | Phase 2 | Pending |
-| MISSION-01 | Phase 2 | Pending |
+| MISSION-01 | Phase 2 | Complete |
 | MISSION-02 | Phase 2 | Pending |
 | MISSION-03 | Phase 3 | Pending |
 | E2E-01 | Phase 3 | Pending |
