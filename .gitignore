@@ -22,10 +22,15 @@ build/
 Thumbs.db
 
 # Project Data / Over-sized files
-data/
+# NOTE: using data/* (not data/) so we can re-include specific subdirs below.
+data/*
 *.geojson
 *.shp
 *.gpkg
+
+# Phase 3 D-11: commit the trimmed Indian EEZ coastline basemap (< 100 KB)
+!data/basemap/
+!data/basemap/*
 
 # MARIDA dataset (4.5 GB — PITFALL mi3, never commit)
 MARIDA/
