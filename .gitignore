@@ -1,16 +1,71 @@
+# Environment
+venv/
+env/
+.venv/
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pye
+*.pyd
+*.zip
+*.egg
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Project Data / Over-sized files
+# NOTE: using data/* (not data/) so we can re-include specific subdirs below.
+data/*
+*.geojson
+*.shp
+*.gpkg
+
+# Phase 3 D-11: commit the trimmed Indian EEZ coastline basemap (< 100 KB)
+!data/basemap/
+!data/basemap/*
+
+# MARIDA dataset (4.5 GB — PITFALL mi3, never commit)
+MARIDA/
+
+# Model checkpoints (PITFALL M12 — use kagglehub, not git)
+# NOTE: kagglehub caches to ~/.cache/kagglehub/ which is OUTSIDE the repo,
+# so no gitignore rule is needed for it. The *.pth and *.ckpt rules below
+# catch any in-repo checkpoints if someone accidentally copies one in.
+*.pth
+*.ckpt
+
+# ML checkpoints (user-supplied, gitignored per D-02 + INFRA-05)
+backend/ml/checkpoints/*.pt
+backend/ml/checkpoints/*.pth
+backend/ml/checkpoints/*.pkl
+backend/ml/checkpoints/*.ckpt
+!backend/ml/checkpoints/.gitkeep
+data/env/*.nc
+
+# Phase metrics (generated at runtime)
+.planning/metrics/
+
+# Node (for future frontend)
+node_modules/.tmp_e2e/
+
+# --- merged from team's main branch ---
 # =====================
 # Environment / Secrets
 # =====================
-.env
 .env.*
 !.env.example
-
 # =====================
 # Node.js / Frontend
 # =====================
 node_modules/
-dist/
-build/
 .cache/
 .parcel-cache/
 .vite/
@@ -20,35 +75,19 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 package-lock.json
-
 # =====================
 # Python / Backend
 # =====================
-venv/
-env/
-.venv/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.egg
-*.egg-info/
-.pytest_cache/
 .mypy_cache/
 .ruff_cache/
 htmlcov/
 .coverage
 *.whl
-
 # =====================
-# OS specific
 # =====================
-.DS_Store
-Thumbs.db
 *.swp
 *.swo
 *~
-
 # =====================
 # IDE / Editor
 # =====================
@@ -56,17 +95,12 @@ Thumbs.db
 .idea/
 *.sublime-project
 *.sublime-workspace
-
 # =====================
 # Project Data / Large files
 # =====================
 data/
 backend/data/*
-*.geojson
 !backend/data/india_coastline_segmented.geojson
-*.shp
-*.gpkg
 *.tif
 *.tiff
 *.nc
-*.zip
