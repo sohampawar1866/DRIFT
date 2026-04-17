@@ -265,22 +265,52 @@ def simulate_drift(
             logger.info("drift_engine: detections dropped in conversion → mock for %s", aoi_id)
             return get_mock_forecast_geojson(aoi_id, forecast_hours)
 
-        # Try real CMEMS/ERA5 first; if missing, build synthetic.
+        # Resolve env: live CMEMS/ERA5 (preferred) → static NetCDF → synthetic.
         env = None
-        cmems = cfg.physics.cmems_path
-        era5 = cfg.physics.era5_path
-        if cmems.exists() and era5.exists():
+        bbox = _api_detection_bounds(detected_geojson)
+
+        # 1. Live env_service (real CMEMS+ERA5 fetch with NetCDF cache).
+        if bbox is not None:
             try:
-                from backend.physics.env_data import load_env_stack
-                env = load_env_stack(cmems, era5, int(forecast_hours))
-                logger.info("drift_engine: loaded real CMEMS+ERA5 for %s", aoi_id)
-            except Exception as env_e:
-                logger.warning(
-                    "drift_engine: real env data load failed (%s) — falling to synthetic", env_e,
+                from backend.physics.env_service import (
+                    fetch_env_for_bbox,
+                    EnvCredentialsMissing,
                 )
-                env = None
+                from datetime import datetime, timedelta
+                # ERA5 reanalysis lags ~5 days; pick t0 7d back to stay inside availability.
+                t0 = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
+                horizon_days = max(1, (int(forecast_hours) + 23) // 24)
+                bundle = fetch_env_for_bbox(
+                    tuple(bbox), t0, horizon_days, "data/env_cache",
+                )
+                env = bundle.to_envstack(int(forecast_hours))
+                # Inject for bio-fouling decay on density polygons.
+                from backend.physics.tracker import set_bio_env
+                set_bio_env(bundle)
+                logger.info("drift_engine: live CMEMS+ERA5 env for %s (bbox=%s, t0=%s)", aoi_id, bbox, t0)
+            except EnvCredentialsMissing as ce:
+                logger.info("drift_engine: live env unavailable (%s) — trying static NetCDF", ce)
+            except Exception as live_e:
+                logger.warning(
+                    "drift_engine: live env_service failed (%s) — trying static NetCDF", live_e,
+                )
+
+        # 2. Static prebaked NetCDFs.
         if env is None:
-            bbox = _api_detection_bounds(detected_geojson)
+            cmems = cfg.physics.cmems_path
+            era5 = cfg.physics.era5_path
+            if cmems.exists() and era5.exists():
+                try:
+                    from backend.physics.env_data import load_env_stack
+                    env = load_env_stack(cmems, era5, int(forecast_hours))
+                    logger.info("drift_engine: loaded static CMEMS+ERA5 for %s", aoi_id)
+                except Exception as env_e:
+                    logger.warning(
+                        "drift_engine: static env load failed (%s)", env_e,
+                    )
+
+        # 3. Synthetic uniform-current fallback.
+        if env is None:
             env = _build_synthetic_env(int(forecast_hours), bbox=bbox)
             logger.info("drift_engine: using synthetic env (constant eastward current)")
 

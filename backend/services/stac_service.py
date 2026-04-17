@@ -22,6 +22,7 @@ def _required_band_paths(item_folder: str) -> dict:
     return {
         "nir": os.path.join(item_folder, "nir.tif"),
         "red": os.path.join(item_folder, "red.tif"),
+        "stack": os.path.join(item_folder, "stack.tif"),
     }
 
 
@@ -165,21 +166,130 @@ def get_live_or_cached_imagery(aoi_id: str, bbox: list) -> dict:
             "local_paths": local_paths
         }
         
-    # 4. First Time Seeing This Image: We must download it!
-    logger.info("stac: downloading new tile for %s -> %s", aoi_id, item_id)
+    # 4. First Time Seeing This Image: window-read needed bands clipped to bbox.
+    logger.info("stac: building clipped stack for %s -> %s (bbox=%s)", aoi_id, item_id, bbox)
     os.makedirs(item_folder, exist_ok=True)
-    
+
     try:
-        # Download only the subset of bands we actually need for FDI and basics to save time (NIR, Red)
-        download_band(stac_metadata["assets"]["nir"], local_paths["nir"])
-        download_band(stac_metadata["assets"]["red"], local_paths["red"])
-        logger.info("stac: download success for %s at %s", aoi_id, item_folder)
+        stack_path = build_clipped_stack(stac_metadata["assets"], bbox, item_folder)
+        local_paths["stack"] = stack_path
+        # also point nir/red at the stack so legacy callers find a file
+        local_paths["nir"] = stack_path
+        local_paths["red"] = stack_path
+        logger.info("stac: clipped stack ready at %s", stack_path)
     except Exception as d_err:
-        logger.warning("stac: download failed for %s (%s)", aoi_id, d_err)
-        return {"error": "Failed to download bands"}
-        
+        logger.warning("stac: clipped stack failed for %s (%s) — trying full-band download", aoi_id, d_err)
+        try:
+            download_band(stac_metadata["assets"]["nir"], local_paths["nir"])
+            download_band(stac_metadata["assets"]["red"], local_paths["red"])
+        except Exception as e2:
+            logger.warning("stac: download fallback failed (%s)", e2)
+            return {"error": "Failed to fetch bands"}
+
     return {
         "source": "aws_download",
         "id": item_id,
-        "local_paths": local_paths
+        "local_paths": local_paths,
     }
+
+
+def build_clipped_stack(assets: dict, bbox: list, out_folder: str) -> str:
+    """Window-read every band asset clipped to bbox (lon/lat) and stack
+    into a single multi-band GeoTIFF. Returns the path to stack.tif.
+
+    Uses rasterio's HTTP COG support so only the bytes inside the window
+    are pulled — no 100MB tile downloads. Bands ordered to match the
+    11-band MARIDA convention so feature_stack works:
+        [B2 blue, B3 green, B4 red, B5 redge1, B6 redge2, B7 redge3,
+         B8 nir, B8A nir2, B11 swir16, B12 swir22, SCL]
+    Missing bands are zero-filled.
+    """
+    import numpy as np
+    import rasterio
+    from rasterio.warp import transform_bounds
+    from rasterio.windows import from_bounds, Window
+
+    band_order = [
+        ("blue", "B02"), ("green", "B03"), ("red", "B04"),
+        ("rededge1", "B05"), ("rededge2", "B06"), ("rededge3", "B07"),
+        ("nir", "B08"), ("nir08", "B8A"),
+        ("swir16", "B11"), ("swir22", "B12"),
+        ("scl", "SCL"),
+    ]
+
+    # Use the first available asset to anchor the output grid + CRS.
+    anchor_href = None
+    for key, _alias in band_order:
+        if assets.get(key):
+            anchor_href = assets[key]
+            break
+    if anchor_href is None:
+        raise RuntimeError("no usable band assets in STAC item")
+
+    with rasterio.open(anchor_href) as anchor:
+        dst_crs = anchor.crs
+        try:
+            left, bottom, right, top = transform_bounds(
+                "EPSG:4326", dst_crs, bbox[0], bbox[1], bbox[2], bbox[3], densify_pts=21,
+            )
+            win = from_bounds(left, bottom, right, top, anchor.transform)
+            win = win.intersection(Window(0, 0, anchor.width, anchor.height))
+            if win.width < 4 or win.height < 4:
+                raise RuntimeError(f"window too small after clipping: {win}")
+        except Exception:
+            raise
+        anchor_arr = anchor.read(1, window=win)
+        H, W = anchor_arr.shape
+        anchor_transform = anchor.window_transform(win)
+
+    stack = np.zeros((len(band_order), H, W), dtype=np.float32)
+
+    for i, (key, _alias) in enumerate(band_order):
+        href = assets.get(key)
+        if not href:
+            continue
+        try:
+            with rasterio.open(href) as src:
+                # Re-derive window in this band's resolution
+                from rasterio.warp import reproject, Resampling
+                src_left, src_bottom, src_right, src_top = transform_bounds(
+                    "EPSG:4326", src.crs, bbox[0], bbox[1], bbox[2], bbox[3], densify_pts=21,
+                )
+                src_win = from_bounds(src_left, src_bottom, src_right, src_top, src.transform)
+                src_win = src_win.intersection(Window(0, 0, src.width, src.height))
+                if src_win.width < 1 or src_win.height < 1:
+                    continue
+                src_arr = src.read(1, window=src_win)
+                src_tf = src.window_transform(src_win)
+                # Resample to anchor grid
+                out = np.zeros((H, W), dtype=np.float32)
+                reproject(
+                    source=src_arr.astype(np.float32),
+                    destination=out,
+                    src_transform=src_tf,
+                    src_crs=src.crs,
+                    dst_transform=anchor_transform,
+                    dst_crs=dst_crs,
+                    resampling=Resampling.bilinear,
+                )
+                stack[i] = out
+        except Exception as e:
+            logger.info("stac: skipped band %s (%s)", key, e)
+
+    # MARIDA convention: reflectance in [0,1]. Sentinel-2 L2A COGs are
+    # uint16 with scale ~10000. Heuristic detector handles both via
+    # bands.max() > 1.5 → DN rescale.
+    out_path = os.path.join(out_folder, "stack.tif")
+    profile = {
+        "driver": "GTiff",
+        "dtype": "float32",
+        "count": stack.shape[0],
+        "height": H,
+        "width": W,
+        "crs": dst_crs,
+        "transform": anchor_transform,
+        "compress": "deflate",
+    }
+    with rasterio.open(out_path, "w", **profile) as dst:
+        dst.write(stack)
+    return out_path

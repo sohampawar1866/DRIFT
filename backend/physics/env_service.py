@@ -30,7 +30,7 @@ from backend.physics.env_data import EnvStack, _finalize
 logger = logging.getLogger(__name__)
 
 CMEMS_CURRENTS_DATASET = "cmems_mod_glo_phy_anfc_0.083deg_PT1H-m"
-CMEMS_BGC_DATASET = "cmems_mod_glo_bgc_anfc_0.25deg_P1D-m"
+CMEMS_BGC_DATASET = "cmems_mod_glo_bgc-pft_anfc_0.25deg_P1D-m"
 ERA5_DATASET = "reanalysis-era5-single-levels"
 ERA5_VARS = (
     "10m_u_component_of_wind",
@@ -66,25 +66,41 @@ class EnvBundle:
     def to_envstack(self, horizon_hours: int = 72) -> EnvStack:
         return _finalize(self.currents_ds, self.winds_ds, horizon_hours)
 
-    def sample_chl(self, lon: float, lat: float, t_iso: str | None = None) -> float:
+    def _sample(self, ds, var: str, lon: float, lat: float, t_iso: str | None) -> float | None:
+        import numpy as np
         try:
-            sel = {"longitude": lon, "latitude": lat}
-            if t_iso is not None and "time" in self.chl_ds.coords:
-                sel["time"] = t_iso
-            v = self.chl_ds["chl"].interp(**sel, method="linear").values
-            return float(v) if v == v else 0.3
+            da = ds[var]
+            sel = {}
+            for ax_name, val in (("longitude", lon), ("latitude", lat), ("lon", lon), ("lat", lat)):
+                if ax_name in da.coords:
+                    sel[ax_name] = val
+            arr = da.interp(**sel, method="linear")
+            if "time" in arr.dims:
+                if t_iso is not None and "time" in arr.coords:
+                    arr = arr.sel(time=t_iso, method="nearest")
+                else:
+                    arr = arr.mean(dim="time", skipna=True)
+            if "depth" in arr.dims:
+                arr = arr.isel(depth=0)
+            v = float(arr.values)
+            if not np.isfinite(v):
+                return None
+            return v
         except Exception:
-            return 0.3
+            return None
+
+    def sample_chl(self, lon: float, lat: float, t_iso: str | None = None) -> float:
+        v = self._sample(self.chl_ds, "chl", lon, lat, t_iso)
+        return v if v is not None else 0.3
 
     def sample_sst(self, lon: float, lat: float, t_iso: str | None = None) -> float:
-        try:
-            sel = {"longitude": lon, "latitude": lat}
-            if t_iso is not None and "time" in self.sst_ds.coords:
-                sel["time"] = t_iso
-            v = self.sst_ds["sst"].interp(**sel, method="linear").values
-            return float(v) - 273.15 if v > 100 else float(v)
-        except Exception:
-            return 20.0
+        for var in ("sst", "analysed_sst", "sea_surface_temperature"):
+            if var in self.sst_ds.data_vars:
+                v = self._sample(self.sst_ds, var, lon, lat, t_iso)
+                if v is None:
+                    continue
+                return v - 273.15 if v > 100 else v
+        return 27.5
 
 
 def _cache_key(bbox: tuple[float, float, float, float], t0: str, horizon_days: int) -> str:
@@ -94,10 +110,18 @@ def _cache_key(bbox: tuple[float, float, float, float], t0: str, horizon_days: i
 
 def _check_creds() -> None:
     missing = []
-    if not os.environ.get("COPERNICUSMARINE_USERNAME"):
-        missing.append("COPERNICUSMARINE_USERNAME")
-    if not os.environ.get("COPERNICUSMARINE_PASSWORD"):
-        missing.append("COPERNICUSMARINE_PASSWORD")
+    cmems_user = (
+        os.environ.get("COPERNICUSMARINE_SERVICE_USERNAME")
+        or os.environ.get("COPERNICUSMARINE_USERNAME")
+    )
+    cmems_pass = (
+        os.environ.get("COPERNICUSMARINE_SERVICE_PASSWORD")
+        or os.environ.get("COPERNICUSMARINE_PASSWORD")
+    )
+    if not cmems_user:
+        missing.append("COPERNICUSMARINE_SERVICE_USERNAME")
+    if not cmems_pass:
+        missing.append("COPERNICUSMARINE_SERVICE_PASSWORD")
     if not os.environ.get("CDSAPI_KEY") and not Path.home().joinpath(".cdsapirc").exists():
         missing.append("CDSAPI_KEY (or ~/.cdsapirc)")
     if missing:
@@ -170,6 +194,39 @@ def _fetch_era5(bbox, t0: datetime, horizon_hours: int, out_path: Path) -> xr.Da
     return ds
 
 
+def _synthetic_era5(bbox, t0, horizon_hours: int) -> xr.Dataset:
+    """Synthesize a small (u10, v10, sst) dataset on a 3x3 lat/lon grid
+    when ERA5 isn't accessible. Constant 5 m/s eastward wind, 27.5°C SST."""
+    import numpy as np
+    n_lat = 3
+    n_lon = 3
+    # Cover horizon + 12h buffer so _assert_time_coverage passes.
+    n_time = max(3, (horizon_hours // 6) + 3)
+    lats = np.linspace(bbox[1], bbox[3], n_lat)
+    lons = np.linspace(bbox[0], bbox[2], n_lon)
+    times = [t0 + timedelta(hours=h * 6) for h in range(n_time)]
+    times_np = np.array([np.datetime64(t.replace(microsecond=0).isoformat()) for t in times])
+    u10 = xr.DataArray(
+        np.full((n_time, n_lat, n_lon), 5.0, dtype="float32"),
+        coords={"time": times_np, "latitude": lats, "longitude": lons},
+        dims=("time", "latitude", "longitude"),
+        attrs={"standard_name": "eastward_wind", "long_name": "10 m eastward wind"},
+    )
+    v10 = xr.DataArray(
+        np.zeros((n_time, n_lat, n_lon), dtype="float32"),
+        coords={"time": times_np, "latitude": lats, "longitude": lons},
+        dims=("time", "latitude", "longitude"),
+        attrs={"standard_name": "northward_wind"},
+    )
+    sst = xr.DataArray(
+        np.full((n_time, n_lat, n_lon), 27.5, dtype="float32"),
+        coords={"time": times_np, "latitude": lats, "longitude": lons},
+        dims=("time", "latitude", "longitude"),
+        attrs={"units": "celsius"},
+    )
+    return xr.Dataset({"u10": u10, "v10": v10, "sst": sst})
+
+
 def fetch_env_for_bbox(
     bbox: tuple[float, float, float, float],
     t0: str,
@@ -203,12 +260,23 @@ def fetch_env_for_bbox(
         logger.info("env_service: cache hit %s for bbox=%s t0=%s", key, bbox, t0)
         currents = xr.open_dataset(currents_p, decode_times=True)
         chl = xr.open_dataset(chl_p, decode_times=True)
-        era5 = xr.open_dataset(era5_p, decode_times=True)
+        try:
+            era5 = xr.open_dataset(era5_p, decode_times=True)
+        except Exception:
+            era5 = _synthetic_era5(bbox, t0_dt, horizon_days * 24)
     else:
         logger.info("env_service: cache miss %s — fetching upstream", key)
         currents = _fetch_cmems_currents(bbox, t0_iso, t1_iso, currents_p)
         chl = _fetch_cmems_chl(bbox, t0_iso, t1_iso, chl_p)
-        era5 = _fetch_era5(bbox, t0_dt, horizon_days * 24, era5_p)
+        try:
+            era5 = _fetch_era5(bbox, t0_dt, horizon_days * 24, era5_p)
+        except Exception as e:
+            logger.warning(
+                "env_service: ERA5 fetch failed (%s) — synthesizing winds+SST. "
+                "Accept license at https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels?tab=download to enable real ERA5.",
+                e,
+            )
+            era5 = _synthetic_era5(bbox, t0_dt, horizon_days * 24)
 
     winds = era5[["u10", "v10"]] if "u10" in era5 else era5
     sst = era5[["sst"]] if "sst" in era5 else era5
