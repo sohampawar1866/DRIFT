@@ -32,6 +32,12 @@ data/*
 !data/basemap/
 !data/basemap/*
 
+# Phase 3 D-13 + D-16: commit pre-baked 4-AOI fallback JSONs (< 50 KB total)
+# Required on disk at demo time for silent fallback per D-12. Regenerate with
+# `python -m scripts.prebake_demo` whenever weights or MARIDA change.
+!data/prebaked/
+!data/prebaked/*
+
 # MARIDA dataset (4.5 GB — PITFALL mi3, never commit)
 MARIDA/
 
@@ -98,7 +104,9 @@ htmlcov/
 # =====================
 # Project Data / Large files
 # =====================
-data/
+# NOTE: merged with Phase 1/2/3 `data/*` rule at top of file.
+# The `!data/basemap/` and `!data/prebaked/` whitelists above are
+# intentionally re-included by NOT repeating the broad `data/` rule here.
 backend/data/*
 !backend/data/india_coastline_segmented.geojson
 *.tif
