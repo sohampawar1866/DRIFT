@@ -96,7 +96,7 @@ Explicitly excluded for this milestone. Do NOT re-litigate.
 
 ## Traceability
 
-Populated during roadmap creation.
+Confirmed during roadmap creation 2026-04-17. All 25 v1 requirements map to exactly one phase. See `.planning/ROADMAP.md` for phase success criteria and risk flags.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
@@ -131,6 +131,11 @@ Populated during roadmap creation.
 - Mapped to phases: 25
 - Unmapped: 0 ✓
 
+**Per-phase counts:**
+- Phase 1 (Schema Foundation + Dummy Inference): 8 requirements
+- Phase 2 (Trajectory + Mission Planner): 7 requirements
+- Phase 3 (Real Training + Weight Swap + Mission Export + E2E): 10 requirements
+
 ---
 *Requirements defined: 2026-04-17*
-*Last updated: 2026-04-17 after initial definition*
+*Last updated: 2026-04-17 after roadmap creation (traceability confirmed)*
