@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { LandingForm } from './components/LandingForm';
 import { OpsDashboard } from './components/OpsDashboard';
+import { HistoryPage } from './components/HistoryPage';
 import './App.css';
 
 function App() {
@@ -10,6 +11,7 @@ function App() {
         <Routes>
           <Route path="/" element={<LandingForm />} />
           <Route path="/aoi/:aoi_id" element={<OpsDashboard />} />
+          <Route path="/history" element={<HistoryPage />} />
         </Routes>
       </div>
     </Router>
