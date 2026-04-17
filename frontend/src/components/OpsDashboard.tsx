@@ -141,7 +141,7 @@ export const OpsDashboard: React.FC = () => {
             {generatingMission ? 'GENERATING...' : 'EXPORT GPX MISSION'}
           </button>
           
-          <button onClick={() => navigate('/')} style={{ padding: '0.6rem 1.5rem', background: '#333', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+          <button onClick={() => navigate('/drift')} style={{ padding: '0.6rem 1.5rem', background: '#333', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
             ABORT & RETURN
           </button>
         </div>

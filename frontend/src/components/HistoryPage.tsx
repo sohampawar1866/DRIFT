@@ -14,14 +14,14 @@ export const HistoryPage = () => {
 
     const handleRevisit = async (id: string) => {
         await axios.post(`http://localhost:8000/api/v1/tracker/revisit/${id}`);
-        navigate('/');
+        navigate('/drift', { state: { highlightedId: id } });
     };
 
     return (
         <div style={{ padding: '40px', background: '#0a0e17', minHeight: '100vh', color: '#fff', boxSizing: 'border-box', fontFamily: 'Inter, sans-serif' }}>
             <h2 style={{ color: '#00e5ff' }}>Sector Deployment History</h2>
             <button 
-                onClick={() => navigate('/')} 
+                onClick={() => navigate('/drift')} 
                 style={{ background: '#1f2937', color: '#fff', border: '1px solid #374151', padding: '10px 20px', borderRadius: '4px', cursor: 'pointer', marginBottom: '30px' }}
             >
                 &larr; Return to Dashboard
