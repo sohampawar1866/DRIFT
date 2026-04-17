@@ -5,7 +5,7 @@ import {
   OpsDashboardPage,
   HistoryPage,
   IntelDashboardPage,
-} from './driftLazyPages';
+} from './driftLazyPages.tsx';
 
 type NavConfig = {
   label: string;
