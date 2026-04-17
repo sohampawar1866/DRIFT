@@ -1,0 +1,136 @@
+{
+  "entries": [
+    {
+      "aoi": "gulf_of_mannar",
+      "files": {
+        "detections": "data/prebaked/gulf_of_mannar_detections.json",
+        "forecast": "data/prebaked/gulf_of_mannar_forecast.json",
+        "mission": "data/prebaked/gulf_of_mannar_mission.json"
+      },
+      "generated_at": "2026-04-17T17:54:54.419634+00:00",
+      "hashes": {
+        "detections": "1e2a0e4312cc542f1ca8e7d572d3d249b08bca962b00657327fe66c868083f7a",
+        "forecast": "bd925116b2fb3bbcf20da60bca63fe2b404bdb49672f7fe58576bbf131843198",
+        "mission": "b95d8a21c7bf2e9c9d0a46901391eee05166bec9e25bf12ad64d0b2cd69bc03d"
+      },
+      "stages": {
+        "detections": {
+          "bytes": 915,
+          "features": 1
+        },
+        "forecast": {
+          "bytes": 4122,
+          "features": 7
+        },
+        "mission": {
+          "bytes": 361,
+          "total_distance_km": 0.0,
+          "total_hours": 0.0,
+          "waypoints": 0
+        }
+      },
+      "status": "ok",
+      "weights_source": "dummy"
+    },
+    {
+      "aoi": "mumbai_offshore",
+      "files": {
+        "detections": "data/prebaked/mumbai_offshore_detections.json",
+        "forecast": "data/prebaked/mumbai_offshore_forecast.json",
+        "mission": "data/prebaked/mumbai_offshore_mission.json"
+      },
+      "generated_at": "2026-04-17T17:55:13.490227+00:00",
+      "hashes": {
+        "detections": "d02a7f0e389c879aca7622355a0b3511bf3d179f67d7ab387a609ed0eff3049e",
+        "forecast": "93dd6d973174a3e2dc4dc80b8fbf31f2c1baa5fe13321342f317e7c35075bc8a",
+        "mission": "99499cd3e158bebe5e9e1addaf8e66b22df97db41685117adc2fe3f9e9ae9ce9"
+      },
+      "stages": {
+        "detections": {
+          "bytes": 922,
+          "features": 1
+        },
+        "forecast": {
+          "bytes": 4152,
+          "features": 7
+        },
+        "mission": {
+          "bytes": 650,
+          "total_distance_km": 15.31,
+          "total_hours": 0.77,
+          "waypoints": 1
+        }
+      },
+      "status": "ok",
+      "weights_source": "dummy"
+    },
+    {
+      "aoi": "bay_of_bengal_mouth",
+      "files": {
+        "detections": "data/prebaked/bay_of_bengal_mouth_detections.json",
+        "forecast": "data/prebaked/bay_of_bengal_mouth_forecast.json",
+        "mission": "data/prebaked/bay_of_bengal_mouth_mission.json"
+      },
+      "generated_at": "2026-04-17T17:55:25.213959+00:00",
+      "hashes": {
+        "detections": "fdeeea363e758edfee45b8d8cacec8bcd824670af3d35dd95c23a042ee2db289",
+        "forecast": "a494105532e0d51812347244a77921fd30ec653d22ce4ddf00ac7fc15c1ac9f3",
+        "mission": "d7a10381a3c1f2c33c320806782016d495b8891bcf97e431f6668fb6f9c452a3"
+      },
+      "stages": {
+        "detections": {
+          "bytes": 928,
+          "features": 1
+        },
+        "forecast": {
+          "bytes": 4168,
+          "features": 7
+        },
+        "mission": {
+          "bytes": 364,
+          "total_distance_km": 0.0,
+          "total_hours": 0.0,
+          "waypoints": 0
+        }
+      },
+      "status": "ok",
+      "weights_source": "dummy"
+    },
+    {
+      "aoi": "arabian_sea_gyre_edge",
+      "files": {
+        "detections": "data/prebaked/arabian_sea_gyre_edge_detections.json",
+        "forecast": "data/prebaked/arabian_sea_gyre_edge_forecast.json",
+        "mission": "data/prebaked/arabian_sea_gyre_edge_mission.json"
+      },
+      "generated_at": "2026-04-17T17:55:36.525268+00:00",
+      "hashes": {
+        "detections": "9aae190899e901246bd4328562aa900e2dcea9807ae7e0c538bd874ddf89bcb5",
+        "forecast": "d0ad1d9efffcb233c22070e00e0680c565ade29cf0cacaa716754ac116055d8f",
+        "mission": "6a49db930e6db53c8a756020aa8eb0c3e02c1281ee6b44b5a466034194e09036"
+      },
+      "stages": {
+        "detections": {
+          "bytes": 927,
+          "features": 1
+        },
+        "forecast": {
+          "bytes": 4199,
+          "features": 7
+        },
+        "mission": {
+          "bytes": 364,
+          "total_distance_km": 0.0,
+          "total_hours": 0.0,
+          "waypoints": 0
+        }
+      },
+      "status": "ok",
+      "weights_source": "dummy"
+    }
+  ],
+  "generated_at": "2026-04-17T17:55:47.824402+00:00",
+  "git_sha": "f980ea5",
+  "seed": 1410,
+  "weights_source": "dummy"
+}

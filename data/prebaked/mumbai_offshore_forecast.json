@@ -1,0 +1,194 @@
+{
+  "features": [
+    {
+      "geometry": {
+        "bbox": null,
+        "coordinates": [
+          [
+            [
+              73.22121221251334,
+              18.837297688717516
+            ],
+            [
+              73.22045189598002,
+              18.837525435062194
+            ],
+            [
+              73.21969432074799,
+              18.83749293339893
+            ],
+            [
+              73.219052967943,
+              18.836922056329758
+            ],
+            [
+              73.21894998788194,
+              18.83620461820466
+            ],
+            [
+              73.21971198288017,
+              18.835817179532683
+            ],
+            [
+              73.22047187221092,
+              18.835629306292685
+            ],
+            [
+              73.22115860461771,
+              18.836225717871223
+            ],
+            [
+              73.22122139978642,
+              18.836425283517944
+            ],
+            [
+              73.22158408601527,
+              18.836946234153903
+            ],
+            [
+              73.22121221251334,
+              18.837297688717516
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "aoi_id": "mumbai_offshore",
+        "density": 1.0,
+        "forecast_hour": 72,
+        "level": 0.9,
+        "scope": "per_detection",
+        "type": "density_contour"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "bbox": null,
+        "coordinates": [
+          [
+            [
+              73.22045367400388,
+              18.837356675577254
+            ],
+            [
+              73.21969659039762,
+              18.837277602722736
+            ],
+            [
+              73.2192998014419,
+              18.836924415653318
+            ],
+            [
+              73.21970782317938,
+              18.83621186101307
+            ],
+            [
+              73.22046995068037,
+              18.835811706387737
+            ],
+            [
+              73.22094430386564,
+              18.836223671730078
+            ],
+            [
+              73.22115650136986,
+              18.8369421521802
+            ],
+            [
+              73.22045367400388,
+              18.837356675577254
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "aoi_id": "mumbai_offshore",
+        "density": 1.0,
+        "forecast_hour": 72,
+        "level": 0.75,
+        "scope": "global",
+        "type": "density_contour"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          73.22047058458377,
+          18.836254391604726
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "aoi_id": "mumbai_offshore",
+        "forecast_hour": 72,
+        "type": "particle"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          73.21982589508222,
+          18.836894199351413
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "aoi_id": "mumbai_offshore",
+        "forecast_hour": 72,
+        "type": "particle"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          73.22067733536977,
+          18.836701732249107
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "aoi_id": "mumbai_offshore",
+        "forecast_hour": 72,
+        "type": "particle"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          73.22076609462204,
+          18.836837843168414
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "aoi_id": "mumbai_offshore",
+        "forecast_hour": 72,
+        "type": "particle"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          73.21939839103948,
+          18.836447030661812
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "aoi_id": "mumbai_offshore",
+        "forecast_hour": 72,
+        "type": "particle"
+      },
+      "type": "Feature"
+    }
+  ],
+  "type": "FeatureCollection"
+}

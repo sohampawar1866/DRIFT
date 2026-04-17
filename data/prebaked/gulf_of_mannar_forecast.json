@@ -1,0 +1,194 @@
+{
+  "features": [
+    {
+      "geometry": {
+        "bbox": null,
+        "coordinates": [
+          [
+            [
+              79.40477579537266,
+              8.734946515859585
+            ],
+            [
+              79.40404886219152,
+              8.735178658020592
+            ],
+            [
+              79.40332303667944,
+              8.735150316903551
+            ],
+            [
+              79.40270538983019,
+              8.734582500287932
+            ],
+            [
+              79.4026025617643,
+              8.733865020331136
+            ],
+            [
+              79.4033301726343,
+              8.733473037115326
+            ],
+            [
+              79.40405693282871,
+              8.73328080277636
+            ],
+            [
+              79.40471819517785,
+              8.733873927572116
+            ],
+            [
+              79.40477950709095,
+              8.734073316348262
+            ],
+            [
+              79.40512994146992,
+              8.734592707303266
+            ],
+            [
+              79.40477579537266,
+              8.734946515859585
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "aoi_id": "gulf_of_mannar",
+        "density": 1.0,
+        "forecast_hour": 72,
+        "level": 0.9,
+        "scope": "per_detection",
+        "type": "density_contour"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "bbox": null,
+        "coordinates": [
+          [
+            [
+              79.40404958056928,
+              8.73500974486726
+            ],
+            [
+              79.40332395371368,
+              8.734934790140596
+            ],
+            [
+              79.4029418310514,
+              8.734583496353773
+            ],
+            [
+              79.40332849206872,
+              8.733868077973364
+            ],
+            [
+              79.40405615654457,
+              8.733463368942372
+            ],
+            [
+              79.40451291656655,
+              8.733873063825017
+            ],
+            [
+              79.4047203592654,
+              8.734590984108985
+            ],
+            [
+              79.40404958056928,
+              8.73500974486726
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "aoi_id": "gulf_of_mannar",
+        "density": 1.0,
+        "forecast_hour": 72,
+        "level": 0.75,
+        "scope": "global",
+        "type": "density_contour"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          79.40405934665968,
+          8.733906427940555
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "aoi_id": "gulf_of_mannar",
+        "forecast_hour": 72,
+        "type": "particle"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          79.40344556916406,
+          8.734550345004676
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "aoi_id": "gulf_of_mannar",
+        "forecast_hour": 72,
+        "type": "particle"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          79.40425999145162,
+          8.734353007135812
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "aoi_id": "gulf_of_mannar",
+        "forecast_hour": 72,
+        "type": "particle"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          79.40434580287919,
+          8.734488743528498
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "aoi_id": "gulf_of_mannar",
+        "forecast_hour": 72,
+        "type": "particle"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          79.40303347727817,
+          8.734105159218974
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "aoi_id": "gulf_of_mannar",
+        "forecast_hour": 72,
+        "type": "particle"
+      },
+      "type": "Feature"
+    }
+  ],
+  "type": "FeatureCollection"
+}

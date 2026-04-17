@@ -1,0 +1,44 @@
+{
+  "features": [
+    {
+      "geometry": {
+        "bbox": null,
+        "coordinates": [
+          [
+            [
+              87.98796162775832,
+              21.511490691841736
+            ],
+            [
+              87.98812292127718,
+              21.488354151033214
+            ],
+            [
+              88.01203696601397,
+              21.488508747393663
+            ],
+            [
+              88.01187841592143,
+              21.511645524061706
+            ],
+            [
+              87.98796162775832,
+              21.511490691841736
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "age_days": 0,
+        "area_sq_meters": 6553600.0,
+        "confidence": 0.843,
+        "fraction_plastic": 0.632,
+        "id": "bay_of_bengal_mouth_000",
+        "type": "macroplastic"
+      },
+      "type": "Feature"
+    }
+  ],
+  "type": "FeatureCollection"
+}

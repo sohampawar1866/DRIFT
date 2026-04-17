@@ -1,0 +1,44 @@
+{
+  "features": [
+    {
+      "geometry": {
+        "bbox": null,
+        "coordinates": [
+          [
+            [
+              79.03796286964443,
+              8.86149213690773
+            ],
+            [
+              79.03812141973697,
+              8.838355360239685
+            ],
+            [
+              79.06203572464979,
+              8.838507304344956
+            ],
+            [
+              79.06187991812392,
+              8.86164431282646
+            ],
+            [
+              79.03796286964443,
+              8.86149213690773
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "age_days": 0,
+        "area_sq_meters": 6553600.0,
+        "confidence": 0.844,
+        "fraction_plastic": 0.634,
+        "id": "gulf_of_mannar_000",
+        "type": "macroplastic"
+      },
+      "type": "Feature"
+    }
+  ],
+  "type": "FeatureCollection"
+}
