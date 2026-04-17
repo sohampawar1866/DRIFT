@@ -1,7 +1,7 @@
 import os
 import json
 import urllib.request
-import socket
+import shutil
 from pystac_client import Client
 import datetime
 from datetime import timedelta
@@ -13,16 +13,21 @@ load_dotenv()
 # Grab the timeout from .env (defaults to 30 seconds if missing)
 STAC_FETCH_TIMEOUT = int(os.getenv("STAC_FETCH_TIMEOUT", 30))
 
-# Enforce the timeout on all simple web requests (like the STAC API call and file downloads)
-socket.setdefaulttimeout(STAC_FETCH_TIMEOUT)
-
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "cache")
 
 def download_band(url: str, save_path: str):
-    """Downloads a file if it doesn't already exist."""
+    """Downloads a file if it doesn't already exist using atomic writes."""
     if not os.path.exists(save_path):
-        print(f"Downloading {url} to {save_path}...")
-        urllib.request.urlretrieve(url, save_path)
+        tmp_path = save_path + ".tmp"
+        print(f"Downloading {url} to {tmp_path}...")
+        try:
+            with urllib.request.urlopen(url, timeout=STAC_FETCH_TIMEOUT) as response, open(tmp_path, 'wb') as out_file:
+                shutil.copyfileobj(response, out_file)
+            os.rename(tmp_path, save_path)
+        except Exception as e:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            raise e
 
 def query_sentinel2_l2a_aws(bbox: list, max_cloud_cover: int = 15, days_back: int = 14) -> dict:
     """

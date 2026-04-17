@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import Map from 'react-map-gl/maplibre';
 import DeckGL from '@deck.gl/react';
 import { LineLayer, PathLayer, PolygonLayer, ScatterplotLayer, GeoJsonLayer } from '@deck.gl/layers';
@@ -8,16 +8,28 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import axios from 'axios';
 
 const INITIAL_VIEW_STATE = {
-  longitude: 72.8,
-  latitude: 19.0,
-  zoom: 10,
+  longitude: 80.0,
+  latitude: 18.0,
+  zoom: 4.2,
   pitch: 0, // Flat 2D Map for clear tactical view
   bearing: 0
 };
 
 export const LandingForm: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [viewState, setViewState] = useState(INITIAL_VIEW_STATE);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  
+  React.useEffect(() => {
+    if (location.state && location.state.highlightedId) {
+      setHighlightedId(location.state.highlightedId);
+      const timer = setTimeout(() => {
+        setHighlightedId(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [location.state]);
   
   // Custom Drawing State (Forcing 4-point Quadrilaterals/Trapezoids)
   const [drawingPoints, setDrawingPoints] = useState<[number, number][]>([]);
@@ -25,13 +37,14 @@ export const LandingForm: React.FC = () => {
 
   const [coastalGeoJson, setCoastalGeoJson] = useState<any>({ type: 'FeatureCollection', features: [] });
   const [searchHistory, setSearchHistory] = useState<any[]>([]);
+  const [hoverInfo, setHoverInfo] = useState<{lng: number, lat: number, x: number, y: number} | null>(null);
 
   React.useEffect(() => {
-    // Load local history from sessionStorage
-    const localHist = sessionStorage.getItem('drift_active_history');
-    if (localHist) {
-      try { setSearchHistory(JSON.parse(localHist)); } catch(e){}
-    }
+    // Fetch global history from the backend
+    axios.get('http://localhost:8000/api/v1/tracker/search').then(res => {
+      setSearchHistory(res.data);
+    }).catch(console.error);
+
     // Fetch dynamic coastline
     axios.get('http://localhost:8000/api/v1/tracker/coastline').then(res => {
       setCoastalGeoJson(res.data);
@@ -68,6 +81,8 @@ export const LandingForm: React.FC = () => {
   }, []);
 
   // Deck.GL Layers
+  const activeHistory = searchHistory.slice(-5);
+  
   const layers = [
     // --- COASTAL VULNERABILITY (JAGGED EXACT BORDERS) ---
     new GeoJsonLayer({
@@ -75,7 +90,10 @@ export const LandingForm: React.FC = () => {
       data: coastalGeoJson,
       stroked: true,
       filled: false,
-      getLineColor: (f: any) => getDensityColor(f.properties.intensity),
+      getLineColor: (f: any) => {
+        const i = f.properties.intensity || 0;
+        return i > 0.05 ? [255, Math.max(0, 200 - i * 400), 0, 255] : [0, 255, 100, 255]; 
+      },
       getLineWidth: (f: any) => Math.max(50, f.properties.intensity * 400),
       lineWidthMinPixels: 3,
       pickable: true,
@@ -85,7 +103,7 @@ export const LandingForm: React.FC = () => {
     // --- PREDICTIVE DRIFT VECTOR (FLAT 2D LINE TO COAST) ---
     new LineLayer({
       id: 'drift-vectors',
-      data: searchHistory,
+      data: activeHistory,
       getSourcePosition: (d: any) => d.center,
       getTargetPosition: (d: any) => d.driftVector,
       getColor: (d: any) => getDensityColor(d.density), // Origin box color
@@ -96,7 +114,7 @@ export const LandingForm: React.FC = () => {
     // --- IMPACT ZONES (DOTS ON COAST) ---
     new ScatterplotLayer({
       id: 'impact-zones',
-      data: searchHistory,
+      data: activeHistory,
       getPosition: (d: any) => d.driftVector,
       getFillColor: [255, 10, 10, 255],
       getRadius: 6000, // 6 km radius hit marker
@@ -107,10 +125,16 @@ export const LandingForm: React.FC = () => {
     // --- HISTORICAL BOXES ---
     new PolygonLayer({
       id: 'historical-polygons',
-      data: searchHistory,
+      data: activeHistory,
       getPolygon: (d: any) => d.coordinates,
-      getFillColor: (d: any) => [...getDensityColor(d.density).slice(0,3), 80] as [number,number,number,number],
-      getLineColor: (d: any) => getDensityColor(d.density),
+      getFillColor: (d: any) => {
+        if (d.id === highlightedId) return [255, 255, 255, 200];
+        return [...getDensityColor(d.density).slice(0,3), 80] as [number,number,number,number];
+      },
+      getLineColor: (d: any) => {
+        if (d.id === highlightedId) return [255, 255, 255, 255];
+        return getDensityColor(d.density);
+      },
       getLineWidth: 100,
       stroked: true,
       filled: true,
@@ -152,13 +176,13 @@ export const LandingForm: React.FC = () => {
   const handleSubmit = async () => {
     if (currentSelection) {
       try {
-        const response = await axios.post('http://localhost:8000/api/v1/tracker/search', {
-          coordinates: [...drawingPoints, drawingPoints[0]]
+        await axios.post('http://localhost:8000/api/v1/tracker/search', {
+          coordinates: drawingPoints
         });
         
-        const newHist = [response.data, ...searchHistory].slice(0, 5); // Keep last 5
-        setSearchHistory(newHist);
-        sessionStorage.setItem('drift_active_history', JSON.stringify(newHist));
+        // Fetch globally updated search history instead of local hack
+        const histRes = await axios.get('http://localhost:8000/api/v1/tracker/search');
+        setSearchHistory(histRes.data);
         
         // Let's reload coastline intensity to respond instantly to the backend update
         const coastRes = await axios.get('http://localhost:8000/api/v1/tracker/coastline');
@@ -186,10 +210,65 @@ export const LandingForm: React.FC = () => {
         controller={true}
         layers={layers}
         onClick={handleMapClick}
-        getTooltip={({object}) => object && (object.density ? `Density: ${(object.density * 100).toFixed(0)}%\nLogged: ${object.date}` : object.properties?.name)}
+        onHover={(info) => {
+          if (info.coordinate) {
+            setHoverInfo({ lng: info.coordinate[0], lat: info.coordinate[1], x: info.x, y: info.y });
+          } else {
+            setHoverInfo(null);
+          }
+        }}
+        getTooltip={({object}) => {
+          if (!object) return null;
+          if (object.properties?.name) return object.properties.name; 
+          if (!object.density) return null;
+          const risk = object.density > 0.7 ? "CRITICAL" : (object.density > 0.4 ? "ELEVATED" : "LOW");
+          const color = risk === "CRITICAL" ? "#ff1744" : risk === "ELEVATED" ? "#ffea00" : "#00e5ff";
+          return {
+            html: `
+              <div style="font-family: monospace; font-size: 13px;">
+                <h4 style="margin: 0 0 5px 0; color: #00e5ff; border-bottom: 1px solid #333; padding-bottom: 5px;">SECTOR: ${object.id}</h4>
+                <div style="margin-bottom: 3px;"><strong>Risk Level:</strong> <span style="color: ${color}; font-weight: bold;">${risk}</span></div>
+                <div style="margin-bottom: 3px;"><strong>Density:</strong> ${(object.density * 100).toFixed(1)}%</div>
+                <div style="margin-bottom: 3px;"><strong>Bearing/Target:</strong> ${object.driftVector[1].toFixed(2)}&deg;N, ${object.driftVector[0].toFixed(2)}&deg;E</div>
+                <div style="color: #888; margin-top: 5px; font-size: 11px;">Deployed: ${object.date}</div>
+              </div>
+            `,
+            style: {
+              backgroundColor: 'rgba(10, 15, 25, 0.95)',
+              border: '1px solid rgba(0, 229, 255, 0.3)',
+              color: '#e0f7fa',
+              borderRadius: '6px',
+              padding: '10px',
+              boxShadow: '0 4px 15px rgba(0,0,0,0.5)',
+              zIndex: 10000
+            }
+          };
+        }}
       >
         <Map mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" />
       </DeckGL>
+
+      {/* Floating Coordinate Tracker */}
+      {hoverInfo && (
+        <div style={{
+          position: 'absolute',
+          left: hoverInfo.x + 15,
+          top: hoverInfo.y + 15,
+          background: 'rgba(10, 15, 25, 0.9)',
+          color: '#00e5ff',
+          padding: '6px 10px',
+          borderRadius: '4px',
+          fontSize: '12px',
+          pointerEvents: 'none',
+          zIndex: 1,
+          fontFamily: 'monospace',
+          border: '1px solid rgba(0, 229, 255, 0.4)',
+          boxShadow: '0 4px 10px rgba(0,0,0,0.5)'
+        }}>
+          {hoverInfo.lat.toFixed(4)}&deg;N<br/>
+          {hoverInfo.lng.toFixed(4)}&deg;E
+        </div>
+      )}
 
       {/* Floating HUD Panel */}
       <div style={{ position: 'absolute', top: '2rem', right: '2rem', background: 'rgba(10, 15, 25, 0.85)', backdropFilter: 'blur(10px)', padding: '1.5rem', borderRadius: '12px', border: '1px solid rgba(0, 229, 255, 0.3)', boxShadow: '0 8px 32px rgba(0,229,255,0.2)', width: '380px', zIndex: 1000, color: '#e0f7fa' }}>
@@ -215,6 +294,12 @@ export const LandingForm: React.FC = () => {
           disabled={drawingPoints.length !== 4}
           style={{ width: '100%', padding: '1rem', background: drawingPoints.length === 4 ? '#00e5ff' : 'rgba(255,255,255,0.1)', color: drawingPoints.length === 4 ? '#000' : '#666', border: 'none', borderRadius: '6px', cursor: drawingPoints.length === 4 ? 'pointer' : 'not-allowed', fontWeight: 'bold', fontSize: '1rem', textTransform: 'uppercase', transition: 'all 0.3s ease', boxShadow: drawingPoints.length === 4 ? '0 0 15px rgba(0,229,255,0.5)' : 'none' }}>
           {drawingPoints.length === 4 ? 'Initialize AWS Deep Scan' : 'Awaiting 4-Point Target...'}
+        </button>
+
+        <button 
+          onClick={() => window.location.href='/history'} 
+          style={{ marginTop: '15px', width: '100%', background: 'transparent', border: '1px solid #333', color: '#9ca3af', padding: '10px', borderRadius: '4px', cursor: 'pointer', transition: 'background 0.3s ease', fontWeight: 'bold' }}>
+          ACCESS DEPLOYMENT LOGS
         </button>
       </div>
 
