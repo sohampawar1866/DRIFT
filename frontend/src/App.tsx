@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { NewLandingPage } from './components/NewLandingPage';
 import { LandingForm } from './components/LandingForm';
 import { OpsDashboard } from './components/OpsDashboard';
 import { HistoryPage } from './components/HistoryPage';
@@ -9,9 +10,10 @@ function App() {
     <Router>
       <div className="app-container" style={{ width: '100%', height: '100vh', margin: 0, padding: 0 }}>
         <Routes>
-          <Route path="/" element={<LandingForm />} />
-          <Route path="/aoi/:aoi_id" element={<OpsDashboard />} />
-          <Route path="/history" element={<HistoryPage />} />
+          <Route path="/" element={<NewLandingPage />} />
+          <Route path="/drift" element={<LandingForm />} />
+          <Route path="/drift/aoi/:aoi_id" element={<OpsDashboard />} />
+          <Route path="/drift/history" element={<HistoryPage />} />
         </Routes>
       </div>
     </Router>

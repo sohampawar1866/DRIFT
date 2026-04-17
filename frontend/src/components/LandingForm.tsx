@@ -195,7 +195,7 @@ export const LandingForm: React.FC = () => {
         setDrawingPoints([]);
         setCurrentSelection(null);
         // We comment out navigate so the user hits the UX they asked for ("on spot popup")
-        // navigate(`/aoi/${customAoiId}`);
+        // navigate(`/drift/aoi/${customAoiId}`);
       } catch (err) {
         console.error(err);
       }
