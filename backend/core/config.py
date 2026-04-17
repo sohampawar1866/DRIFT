@@ -49,6 +49,7 @@ class MissionSettings(BaseModel):
     weight_density: float = 0.5
     weight_accessibility: float = 0.3
     weight_convergence: float = 0.2
+    avg_speed_kmh: float = Field(default=20.0, gt=0.0, le=60.0)
 
 
 class Settings(BaseSettings):

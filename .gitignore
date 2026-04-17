@@ -36,6 +36,10 @@ MARIDA/
 # catch any in-repo checkpoints if someone accidentally copies one in.
 *.pth
 *.ckpt
+backend/ml/checkpoints/*.pth
+backend/ml/checkpoints/*.ckpt
+backend/ml/checkpoints/*.pt
+data/env/*.nc
 
 # Phase metrics (generated at runtime)
 .planning/metrics/

@@ -22,3 +22,4 @@ mission:
   weight_density: 0.5
   weight_accessibility: 0.3
   weight_convergence: 0.2
+  avg_speed_kmh: 20.0
