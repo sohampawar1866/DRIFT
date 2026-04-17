@@ -104,7 +104,15 @@ Plans:
   4. `backend/mission/export.py` produces three artifacts from a `MissionPlan`: (a) **GPX** — opens cleanly in Google Earth, shows vessel route as a track with waypoints as pins; (b) **GeoJSON** — `pydantic.model_dump_json(indent=2)` < 500 KB, RFC-7946 compliant; (c) **PDF briefing** — one page, < 1 MB, generated in < 3 s via matplotlib + reportlab (no headless Chrome), contains: vessel route over Indian EEZ map, waypoint table with (order, lon, lat, ETA, priority), wind/current conditions at each stop, fuel estimate summary.
   5. **Pre-baked 4-AOI fallback JSONs** land at `data/prebaked/{gulf_of_mannar,mumbai_offshore,bay_of_bengal_mouth,arabian_sea_gyre_edge}_{detections,forecast,mission}.json` by **H+28** (before feature freeze at H+36). Fallback parity test: live output hash on the 4 demo tiles === pre-baked hash for each stage (asserts determinism: same inputs + same seed -> byte-identical output per D11). Screen recording of a successful end-to-end run saved at `.planning/demo/successful_run.mp4` by H+36.
 
-**Plans**: TBD
+**Plans**: 6 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Wave 1: Deps + offline basemap (reportlab, Natural Earth coastline clip, .gitignore hardening for checkpoints dir)
+- [ ] 03-02-PLAN.md — Wave 2: backend/mission/export.py (GPX + GeoJSON + PDF briefing) against synthetic fixtures — MISSION-03
+- [ ] 03-03-PLAN.md — Wave 2: Fallback infrastructure (scripts/run_full_chain_real.py + scripts/parity_hash.py + tests/test_fallback.py) — partial E2E-02
+- [ ] 03-04-PLAN.md — Wave 3: weights.py our_real branch + train.py D-03 review + weight-swap smoke + metrics re-eval — INFRA-05, ML-02/05/06/07/08/09 (scope-corrected per D-01: code-review, not training execution)
+- [ ] 03-05-PLAN.md — Wave 3: backend/e2e_test.py with warm-up + per-stage timing + < 15 s total gate — E2E-01
+- [ ] 03-06-PLAN.md — Wave 4: scripts/prebake_demo.py + tests/test_prebake_parity.py + requirements.lock H+32 freeze + H+36 recording protocol — E2E-02 close
 
 **Risk flags**:
   - **Kaggle GPU currently DISABLED** (PITFALL C6, CRITICAL BLOCKER): `kaggle.yml` has `enable_gpu: false`. **Flip this BEFORE Phase 3 kicks off**, not after training starts. First cell of notebook must `assert torch.cuda.is_available()` or abort. If it runs on CPU, a 25-epoch run blows past the 9-hour session timeout — full Phase 3 compute budget destroyed.
@@ -128,7 +136,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Schema Foundation + Dummy Inference | 0/? | Not started | - |
 | 2. Trajectory + Mission Planner | 0/? | Not started | - |
-| 3. Real Training + Weight Swap + Mission Export + E2E | 0/? | Not started | - |
+| 3. Real Training + Weight Swap + Mission Export + E2E | 0/6 | Not started | - |
 
 ## Critical-Path Timing (24-48 h hackathon)
 
