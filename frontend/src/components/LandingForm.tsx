@@ -247,7 +247,9 @@ export const LandingForm: React.FC = () => {
               borderRadius: '6px',
               padding: '10px',
               boxShadow: '0 4px 15px rgba(0,0,0,0.5)',
-              zIndex: 10000
+              zIndex: 10000,
+              marginTop: '60px',
+              marginLeft: '15px'
             }
           };
         }}
