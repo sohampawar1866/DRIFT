@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
+<<<<<<< HEAD
 import axios from 'axios';
+=======
+>>>>>>> 03bede4b76d58f688eb646a8334761916b600cbb
 import { useNavigate } from 'react-router-dom';
 import DeckGL from '@deck.gl/react';
 import MapLibreMap from 'react-map-gl/maplibre';
@@ -22,6 +25,10 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import 'maplibre-gl/dist/maplibre-gl.css';
+<<<<<<< HEAD
+=======
+import api, { apiErrorMessage } from '../lib/api';
+>>>>>>> 03bede4b76d58f688eb646a8334761916b600cbb
 
 type HistoryRecord = {
   id: string;
@@ -32,8 +39,11 @@ type HistoryRecord = {
   date: string;
 };
 
+<<<<<<< HEAD
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
+=======
+>>>>>>> 03bede4b76d58f688eb646a8334761916b600cbb
 const INITIAL_VIEW_STATE = {
   longitude: 80,
   latitude: 15,
@@ -76,12 +86,20 @@ export const IntelDashboardPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+<<<<<<< HEAD
     setLoading(true);
     axios
       .get(`${API_BASE_URL}/api/v1/tracker/search`)
       .then((res) => setRecords(Array.isArray(res.data) ? res.data : []))
       .catch((err) => {
         console.error('Failed to load tracker history', err);
+=======
+    api
+      .trackerSearch()
+      .then((res) => setRecords(Array.isArray(res) ? res : []))
+      .catch((err) => {
+        console.error('tracker/search:', apiErrorMessage(err));
+>>>>>>> 03bede4b76d58f688eb646a8334761916b600cbb
         setRecords([]);
       })
       .finally(() => setLoading(false));
@@ -101,7 +119,14 @@ export const IntelDashboardPage: React.FC = () => {
     if (!filteredRecords.length) return;
     const avgLon = filteredRecords.reduce((acc, r) => acc + r.center[0], 0) / filteredRecords.length;
     const avgLat = filteredRecords.reduce((acc, r) => acc + r.center[1], 0) / filteredRecords.length;
+<<<<<<< HEAD
     setViewState((prev) => ({ ...prev, longitude: avgLon, latitude: avgLat }));
+=======
+    const frame = window.requestAnimationFrame(() => {
+      setViewState((prev) => ({ ...prev, longitude: avgLon, latitude: avgLat }));
+    });
+    return () => window.cancelAnimationFrame(frame);
+>>>>>>> 03bede4b76d58f688eb646a8334761916b600cbb
   }, [filteredRecords]);
 
   const dailySeries = useMemo(() => {

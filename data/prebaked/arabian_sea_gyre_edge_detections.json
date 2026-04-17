@@ -1,0 +1,44 @@
+{
+  "features": [
+    {
+      "geometry": {
+        "bbox": null,
+        "coordinates": [
+          [
+            [
+              66.4879693524013,
+              15.011498031178881
+            ],
+            [
+              66.48811668524041,
+              14.988360300600078
+            ],
+            [
+              66.5120292462394,
+              14.988501418843784
+            ],
+            [
+              66.51188465300164,
+              15.011639365002068
+            ],
+            [
+              66.4879693524013,
+              15.011498031178881
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "age_days": 0,
+        "area_sq_meters": 6553600.0,
+        "confidence": 0.844,
+        "fraction_plastic": 0.633,
+        "id": "arabian_sea_gyre_edge_000",
+        "type": "macroplastic"
+      },
+      "type": "Feature"
+    }
+  ],
+  "type": "FeatureCollection"
+}

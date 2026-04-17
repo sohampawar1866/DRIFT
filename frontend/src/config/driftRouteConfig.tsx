@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { lazy, type ComponentType } from 'react';
 import { Gauge, History, Map, Radar } from 'lucide-react';
 
@@ -5,6 +6,16 @@ const LandingForm = lazy(() => import('../components/LandingForm').then((mod) =>
 const OpsDashboard = lazy(() => import('../components/OpsDashboard').then((mod) => ({ default: mod.OpsDashboard })));
 const HistoryPage = lazy(() => import('../components/HistoryPage').then((mod) => ({ default: mod.HistoryPage })));
 const IntelDashboardPage = lazy(() => import('../components/IntelDashboardPage').then((mod) => ({ default: mod.IntelDashboardPage })));
+=======
+import type { ComponentType } from 'react';
+import { Gauge, History, Map, Radar } from 'lucide-react';
+import {
+  LandingFormPage,
+  OpsDashboardPage,
+  HistoryPage,
+  IntelDashboardPage,
+} from './driftLazyPages';
+>>>>>>> 03bede4b76d58f688eb646a8334761916b600cbb
 
 type NavConfig = {
   label: string;
@@ -25,7 +36,11 @@ export const DRIFT_ROUTE_CONFIG: DriftRouteConfig[] = [
   {
     key: 'map-ops',
     index: true,
+<<<<<<< HEAD
     component: LandingForm,
+=======
+    component: LandingFormPage,
+>>>>>>> 03bede4b76d58f688eb646a8334761916b600cbb
     nav: {
       label: 'Map Ops',
       to: '/drift',
@@ -36,7 +51,11 @@ export const DRIFT_ROUTE_CONFIG: DriftRouteConfig[] = [
   {
     key: 'ops-detail',
     path: 'aoi/:aoi_id',
+<<<<<<< HEAD
     component: OpsDashboard,
+=======
+    component: OpsDashboardPage,
+>>>>>>> 03bede4b76d58f688eb646a8334761916b600cbb
     nav: {
       label: 'Ops Detail',
       to: '/drift/aoi/mumbai',

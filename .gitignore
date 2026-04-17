@@ -1,72 +1,100 @@
 # =====================
-# Environment / Secrets
+# Environment / secrets
 # =====================
 .env
 .env.*
 !.env.example
 
 # =====================
-# Node.js / Frontend
+# Python
 # =====================
-node_modules/
-dist/
-build/
-.cache/
-.parcel-cache/
-.vite/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-package-lock.json
-
-# =====================
-# Python / Backend
-# =====================
-venv/
-env/
-.venv/
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
 *.pyd
 *.egg
 *.egg-info/
+build/
+dist/
+*.whl
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 htmlcov/
 .coverage
-*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+backend/venv/
 
 # =====================
-# OS specific
+# Node / frontend
 # =====================
-.DS_Store
-Thumbs.db
-*.swp
-*.swo
-*~
+node_modules/
+frontend/node_modules/
+.cache/
+.parcel-cache/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # =====================
-# IDE / Editor
+# Editors / OS
 # =====================
 .vscode/
+!.vscode/extensions.json
 .idea/
 *.sublime-project
 *.sublime-workspace
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
 
 # =====================
-# Project Data / Large files
+# Data / large artifacts
 # =====================
-data/
+# Keep only whitelisted demo artifacts under /data.
+data/*
+!data/basemap/
+!data/basemap/**
+!data/prebaked/
+!data/prebaked/**
+
+# Backend runtime/cache data (keep coastline source file only).
 backend/data/*
-*.geojson
 !backend/data/india_coastline_segmented.geojson
-*.shp
-*.gpkg
+
+# NetCDF + rasters (downloaded/generated)
+data/env/*.nc
+backend/data/*.nc
 *.tif
 *.tiff
-*.nc
-*.zip
+
+# Vector sidecar files generated from shapefiles
+*.gpkg
+*.shp
+*.shx
+*.dbf
+*.cpg
+*.prj
+
+# MARIDA dataset (very large)
+MARIDA/
+
+# Model checkpoints (never commit trained weights)
+*.pth
+*.ckpt
+backend/ml/checkpoints/*.pt
+backend/ml/checkpoints/*.pth
+backend/ml/checkpoints/*.pkl
+backend/ml/checkpoints/*.ckpt
+!backend/ml/checkpoints/.gitkeep
+
+# Generated metrics
+.planning/metrics/

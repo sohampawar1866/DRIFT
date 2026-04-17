@@ -1,0 +1,26 @@
+{
+  "waypoints": [],
+  "route": {
+    "type": "Feature",
+    "geometry": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          88.32,
+          22.57
+        ],
+        [
+          88.32,
+          22.57
+        ]
+      ]
+    },
+    "properties": {}
+  },
+  "total_distance_km": 0.0,
+  "total_hours": 0.0,
+  "origin": [
+    88.32,
+    22.57
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "waypoints": [
+    {
+      "order": 0,
+      "lon": 72.85000000000001,
+      "lat": 18.950000000000003,
+      "arrival_hour": 0.3826558852201817,
+      "priority_score": 1708416.8698301038
+    }
+  ],
+  "route": {
+    "type": "Feature",
+    "geometry": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          72.8,
+          18.9
+        ],
+        [
+          72.85000000000001,
+          18.950000000000003
+        ],
+        [
+          72.8,
+          18.9
+        ]
+      ]
+    },
+    "properties": {}
+  },
+  "total_distance_km": 15.306235408807268,
+  "total_hours": 0.7653117704403634,
+  "origin": [
+    72.8,
+    18.9
+  ]
+}

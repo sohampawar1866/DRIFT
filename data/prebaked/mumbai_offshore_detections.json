@@ -1,0 +1,44 @@
+{
+  "features": [
+    {
+      "geometry": {
+        "bbox": null,
+        "coordinates": [
+          [
+            [
+              72.8379594254964,
+              18.961486494899837
+            ],
+            [
+              72.83812867024893,
+              18.938350634595484
+            ],
+            [
+              72.86203916896146,
+              18.938512938987195
+            ],
+            [
+              72.86187266269935,
+              18.961649047233173
+            ],
+            [
+              72.8379594254964,
+              18.961486494899837
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "age_days": 0,
+        "area_sq_meters": 6553600.0,
+        "confidence": 0.843,
+        "fraction_plastic": 0.633,
+        "id": "mumbai_offshore_000",
+        "type": "macroplastic"
+      },
+      "type": "Feature"
+    }
+  ],
+  "type": "FeatureCollection"
+}

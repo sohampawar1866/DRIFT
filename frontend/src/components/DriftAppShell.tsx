@@ -10,17 +10,30 @@ export const DriftAppShell: React.FC = () => {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 900);
 
   useEffect(() => {
+<<<<<<< HEAD
     const onResize = () => setIsMobile(window.innerWidth <= 900);
+=======
+    const onResize = () => {
+      const mobile = window.innerWidth <= 900;
+      setIsMobile(mobile);
+      if (!mobile) {
+        setOpen(false);
+      }
+    };
+>>>>>>> 03bede4b76d58f688eb646a8334761916b600cbb
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
+<<<<<<< HEAD
   useEffect(() => {
     if (!isMobile) {
       setOpen(false);
     }
   }, [isMobile]);
 
+=======
+>>>>>>> 03bede4b76d58f688eb646a8334761916b600cbb
   const mobileItems = [
     { label: 'Map', to: '/drift', icon: Map, activePrefixes: ['/drift'] },
     { label: 'History', to: '/drift/history', icon: History, activePrefixes: ['/drift/history'] },

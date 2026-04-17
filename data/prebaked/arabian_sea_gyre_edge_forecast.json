@@ -1,0 +1,194 @@
+{
+  "features": [
+    {
+      "geometry": {
+        "bbox": null,
+        "coordinates": [
+          [
+            [
+              66.86338748303514,
+              14.887045731851243
+            ],
+            [
+              66.86264306877659,
+              14.887273836278787
+            ],
+            [
+              66.86190122049776,
+              14.887241649311004
+            ],
+            [
+              66.86127293328407,
+              14.886670949720756
+            ],
+            [
+              66.86117176456666,
+              14.88595343711873
+            ],
+            [
+              66.86191775014481,
+              14.885565611931025
+            ],
+            [
+              66.86266176559676,
+              14.885377386575488
+            ],
+            [
+              66.86333450136837,
+              14.88597360682393
+            ],
+            [
+              66.86339608259993,
+              14.886173178922053
+            ],
+            [
+              66.86375146978581,
+              14.886694062786258
+            ],
+            [
+              66.86338748303514,
+              14.887045731851243
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "aoi_id": "arabian_sea_gyre_edge",
+        "density": 1.0,
+        "forecast_hour": 72,
+        "level": 0.9,
+        "scope": "per_detection",
+        "type": "density_contour"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "bbox": null,
+        "coordinates": [
+          [
+            [
+              66.86264473294106,
+              14.887105048227234
+            ],
+            [
+              66.86190334463728,
+              14.887026282200868
+            ],
+            [
+              66.86151463902918,
+              14.886673204875372
+            ],
+            [
+              66.86191385719115,
+              14.885960360181006
+            ],
+            [
+              66.86265996715213,
+              14.885559817540074
+            ],
+            [
+              66.86312465230151,
+              14.885971650663091
+            ],
+            [
+              66.86333276776863,
+              14.886690160150392
+            ],
+            [
+              66.86264473294106,
+              14.887105048227234
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "aoi_id": "arabian_sea_gyre_edge",
+        "density": 1.0,
+        "forecast_hour": 72,
+        "level": 0.75,
+        "scope": "global",
+        "type": "density_contour"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          66.86266078970488,
+          14.886002575443811
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "aoi_id": "arabian_sea_gyre_edge",
+        "forecast_hour": 72,
+        "type": "particle"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          66.86202978744949,
+          14.886642760985547
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "aoi_id": "arabian_sea_gyre_edge",
+        "forecast_hour": 72,
+        "type": "particle"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          66.86286344852587,
+          14.886449902572446
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "aoi_id": "arabian_sea_gyre_edge",
+        "forecast_hour": 72,
+        "type": "particle"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          66.86295042552258,
+          14.88658599849164
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "aoi_id": "arabian_sea_gyre_edge",
+        "forecast_hour": 72,
+        "type": "particle"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          66.86161096182512,
+          14.886195699519465
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "aoi_id": "arabian_sea_gyre_edge",
+        "forecast_hour": 72,
+        "type": "particle"
+      },
+      "type": "Feature"
+    }
+  ],
+  "type": "FeatureCollection"
+}

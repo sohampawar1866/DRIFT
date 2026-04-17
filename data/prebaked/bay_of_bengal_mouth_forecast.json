@@ -1,0 +1,194 @@
+{
+  "features": [
+    {
+      "geometry": {
+        "bbox": null,
+        "coordinates": [
+          [
+            [
+              88.3751009119734,
+              21.380710038132268
+            ],
+            [
+              88.37433276872918,
+              21.380951312295796
+            ],
+            [
+              88.3735621940953,
+              21.380932362119424
+            ],
+            [
+              88.37289894490152,
+              21.38037310888878
+            ],
+            [
+              88.37277990695446,
+              21.37965771172858
+            ],
+            [
+              88.37354655635787,
+              21.37925676135041
+            ],
+            [
+              88.37431506468448,
+              21.379055358150488
+            ],
+            [
+              88.37502494299761,
+              21.37963932687385
+            ],
+            [
+              88.3750927616861,
+              21.379837713921283
+            ],
+            [
+              88.37547180106917,
+              21.3803520345702
+            ],
+            [
+              88.3751009119734,
+              21.380710038132268
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "aoi_id": "bay_of_bengal_mouth",
+        "density": 1.0,
+        "forecast_hour": 72,
+        "level": 0.9,
+        "scope": "per_detection",
+        "type": "density_contour"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "bbox": null,
+        "coordinates": [
+          [
+            [
+              88.37433119295233,
+              21.38078256835425
+            ],
+            [
+              88.37356018459501,
+              21.38071705111747
+            ],
+            [
+              88.37314984899199,
+              21.380371055464373
+            ],
+            [
+              88.3735502392943,
+              21.37965140677517
+            ],
+            [
+              88.37431676765858,
+              21.37923774144897
+            ],
+            [
+              88.37480710873797,
+              21.37964111205931
+            ],
+            [
+              88.37503716605646,
+              21.380355597444314
+            ],
+            [
+              88.37433119295233,
+              21.38078256835425
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "aoi_id": "bay_of_bengal_mouth",
+        "density": 1.0,
+        "forecast_hour": 72,
+        "level": 0.75,
+        "scope": "global",
+        "type": "density_contour"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          88.37432628474413,
+          21.37968029120462
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "aoi_id": "bay_of_bengal_mouth",
+        "forecast_hour": 72,
+        "type": "particle"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          88.37368391192743,
+          21.380331443666325
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "aoi_id": "bay_of_bengal_mouth",
+        "forecast_hour": 72,
+        "type": "particle"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          88.37454537157399,
+          21.3801238106031
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "aoi_id": "bay_of_bengal_mouth",
+        "forecast_hour": 72,
+        "type": "particle"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          88.37463830568048,
+          21.380258296679038
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "aoi_id": "bay_of_bengal_mouth",
+        "forecast_hour": 72,
+        "type": "particle"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          88.37324047725583,
+          21.379892041620693
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "aoi_id": "bay_of_bengal_mouth",
+        "forecast_hour": 72,
+        "type": "particle"
+      },
+      "type": "Feature"
+    }
+  ],
+  "type": "FeatureCollection"
+}
