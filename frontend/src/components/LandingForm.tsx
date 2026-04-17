@@ -5,7 +5,12 @@ import DeckGL from '@deck.gl/react';
 import { LineLayer, PathLayer, PolygonLayer, ScatterplotLayer, GeoJsonLayer } from '@deck.gl/layers';
 import * as turf from '@turf/turf';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import api, { apiErrorMessage } from '../lib/api';
+import api, { apiErrorMessage, type SearchRecord } from '../lib/api';
+
+type CoastlineFeature = GeoJSON.Feature<GeoJSON.Geometry, GeoJSON.GeoJsonProperties>;
+type CoastlineCollection = GeoJSON.FeatureCollection<GeoJSON.Geometry, GeoJSON.GeoJsonProperties>;
+type TurfPolygonFeature = GeoJSON.Feature<GeoJSON.Polygon>;
+type MapClickInfo = { coordinate?: number[] };
 
 const INITIAL_VIEW_STATE = {
   longitude: 80.0,
@@ -48,22 +53,28 @@ export const LandingForm: React.FC = () => {
   }, []);
 
   React.useEffect(() => {
-    if (location.state && location.state.highlightedId) {
-      setHighlightedId(location.state.highlightedId);
-      const timer = setTimeout(() => {
+    const state = location.state as { highlightedId?: string } | null;
+    if (state?.highlightedId) {
+      const activateTimer = window.setTimeout(() => {
+        setHighlightedId(state.highlightedId!);
+      }, 0);
+      const clearTimer = window.setTimeout(() => {
         setHighlightedId(null);
       }, 3000);
-      return () => clearTimeout(timer);
+      return () => {
+        window.clearTimeout(activateTimer);
+        window.clearTimeout(clearTimer);
+      };
     }
   }, [location.state]);
 
   // Single-point targeting; we auto-build a Sentinel-sized square patch.
   const [drawingPoints, setDrawingPoints] = useState<[number, number][]>([]);
-  const [currentSelection, setCurrentSelection] = useState<any>(null);
-  const [processingSelection, setProcessingSelection] = useState<any>(null);
+  const [currentSelection, setCurrentSelection] = useState<TurfPolygonFeature | null>(null);
+  const [processingSelection, setProcessingSelection] = useState<TurfPolygonFeature | null>(null);
 
-  const [coastalGeoJson, setCoastalGeoJson] = useState<any>({ type: 'FeatureCollection', features: [] });
-  const [searchHistory, setSearchHistory] = useState<any[]>([]);
+  const [coastalGeoJson, setCoastalGeoJson] = useState<CoastlineCollection>({ type: 'FeatureCollection', features: [] });
+  const [searchHistory, setSearchHistory] = useState<SearchRecord[]>([]);
   const [hoverInfo, setHoverInfo] = useState<{ lng: number, lat: number, x: number, y: number, hasObject: boolean } | null>(null);
 
   const processingBbox = React.useMemo(() => {
@@ -97,8 +108,8 @@ export const LandingForm: React.FC = () => {
     return [16, 185, 129, 200]; // Emerald Green
   };
 
-  const handleMapClick = useCallback((info: any) => {
-    if (!info.coordinate) return;
+  const handleMapClick = useCallback((info: MapClickInfo) => {
+    if (!info.coordinate || info.coordinate.length < 2) return;
     const [lng, lat] = info.coordinate;
 
     setDrawingPoints(() => {
@@ -121,11 +132,20 @@ export const LandingForm: React.FC = () => {
       data: coastalGeoJson,
       stroked: true,
       filled: false,
-      getLineColor: (f: any) => {
-        const i = f.properties.intensity || 0;
+      getLineColor: (f: CoastlineFeature) => {
+        const i =
+          f.properties && typeof f.properties === 'object' && 'intensity' in f.properties
+            ? Number(f.properties.intensity || 0)
+            : 0;
         return i > 0.05 ? [245, 158, 11, 255] : [16, 185, 129, 255];
       },
-      getLineWidth: (f: any) => Math.max(50, f.properties.intensity * 400),
+      getLineWidth: (f: CoastlineFeature) => {
+        const i =
+          f.properties && typeof f.properties === 'object' && 'intensity' in f.properties
+            ? Number(f.properties.intensity || 0)
+            : 0;
+        return Math.max(50, i * 400);
+      },
       lineWidthMinPixels: 3,
       pickable: true,
       autoHighlight: true
@@ -135,9 +155,9 @@ export const LandingForm: React.FC = () => {
     new LineLayer({
       id: 'drift-vectors',
       data: activeHistory,
-      getSourcePosition: (d: any) => d.center,
-      getTargetPosition: (d: any) => d.driftVector,
-      getColor: (d: any) => getDensityColor(d.density), // Origin box color
+      getSourcePosition: (d: SearchRecord) => d.center,
+      getTargetPosition: (d: SearchRecord) => d.driftVector,
+      getColor: (d: SearchRecord) => getDensityColor(d.density), // Origin box color
       getWidth: 5,
       pickable: true
     }),
@@ -146,7 +166,7 @@ export const LandingForm: React.FC = () => {
     new ScatterplotLayer({
       id: 'impact-zones',
       data: activeHistory,
-      getPosition: (d: any) => d.driftVector,
+      getPosition: (d: SearchRecord) => d.driftVector,
       getFillColor: [245, 158, 11, 255],
       getRadius: 6000, // 6 km radius hit marker
       radiusMinPixels: 4,
@@ -157,12 +177,12 @@ export const LandingForm: React.FC = () => {
     new PolygonLayer({
       id: 'historical-polygons',
       data: activeHistory,
-      getPolygon: (d: any) => d.coordinates,
-      getFillColor: (d: any) => {
+      getPolygon: (d: SearchRecord) => d.coordinates,
+      getFillColor: (d: SearchRecord) => {
         if (d.id === highlightedId) return [255, 255, 255, 200];
         return [...getDensityColor(d.density).slice(0, 3), 80] as [number, number, number, number];
       },
-      getLineColor: (d: any) => {
+      getLineColor: (d: SearchRecord) => {
         if (d.id === highlightedId) return [255, 255, 255, 255];
         return getDensityColor(d.density);
       },
@@ -178,7 +198,7 @@ export const LandingForm: React.FC = () => {
     new PathLayer({
       id: 'drawing-border',
       data: currentSelection ? [{ path: currentSelection.geometry.coordinates[0] }] : [],
-      getPath: (d: any) => d.path,
+      getPath: (d: { path: [number, number][] }) => d.path,
       getColor: [16, 185, 129, 255],
       getWidth: 150,
       widthMinPixels: 2
@@ -188,7 +208,7 @@ export const LandingForm: React.FC = () => {
     new ScatterplotLayer({
       id: 'drawing-nodes',
       data: drawingPoints.map(p => ({ position: p })),
-      getPosition: (d: any) => d.position,
+      getPosition: (d: { position: [number, number] }) => d.position,
       getFillColor: [16, 185, 129, 255],
       getRadius: 500,
       radiusMinPixels: 7
@@ -198,7 +218,7 @@ export const LandingForm: React.FC = () => {
     currentSelection && new PolygonLayer({
       id: 'drawing-fill',
       data: [currentSelection],
-      getPolygon: (d: any) => d.geometry.coordinates[0],
+      getPolygon: (d: TurfPolygonFeature) => d.geometry.coordinates[0],
       getFillColor: [16, 185, 129, 50],
       filled: true
     })
@@ -225,8 +245,13 @@ export const LandingForm: React.FC = () => {
 
         const center = record.center ?? drawingPoints[0];
         const customAoiId = `custom_${center[0].toFixed(4)}_${center[1].toFixed(4)}`;
-        navigate(`/drift/aoi/${customAoiId}`, { state: { highlightedId: record.id } });
-      } catch (err: any) {
+        navigate(`/drift/aoi/${customAoiId}`, {
+          state: {
+            highlightedId: record.id,
+            coordinates: record.coordinates,
+          },
+        });
+      } catch (err: unknown) {
         console.error(err);
         const msg = apiErrorMessage(err);
         alert(msg.includes('ocean') || msg.includes('land')

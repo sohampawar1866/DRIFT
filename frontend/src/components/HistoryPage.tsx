@@ -30,7 +30,12 @@ export const HistoryPage = () => {
         }
         const [lon, lat] = item.center;
         const customAoiId = `custom_${lon.toFixed(4)}_${lat.toFixed(4)}`;
-        navigate(`/drift/aoi/${customAoiId}`, { state: { highlightedId: item.id } });
+        navigate(`/drift/aoi/${customAoiId}`, {
+            state: {
+                highlightedId: item.id,
+                coordinates: item.coordinates,
+            },
+        });
     };
 
     const handleClearHistory = async () => {

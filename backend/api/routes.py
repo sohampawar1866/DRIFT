@@ -46,6 +46,21 @@ def _as_http_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=503, detail=str(exc))
 
 
+def _run_detection(
+    aoi_id: str,
+    *,
+    s2_tile_path: str | None = None,
+    bbox: str | None = None,
+    polygon: str | None = None,
+) -> dict:
+    try:
+        return detect_macroplastic(aoi_id, s2_tile_path=s2_tile_path, bbox=bbox, polygon=polygon)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise _as_http_error(exc) from exc
+
+
 @router.get("/aois")
 async def list_aois():
     """Return pre-staged AOIs (frontend dropdown).
@@ -61,55 +76,67 @@ async def list_aois():
 
 
 @router.get("/detect")
-async def detect_plastic(aoi_id: str = "mumbai", s2_tile_path: str | None = None):
+async def detect_plastic(
+    aoi_id: str = "mumbai",
+    s2_tile_path: str | None = None,
+    bbox: str | None = None,
+    polygon: str | None = None,
+):
     """Run the real plastic-detection pipeline on a MARIDA tile for the AOI.
 
     Returns a GeoJSON FeatureCollection with properties
     `{id, confidence, area_sq_meters, age_days, type, fraction_plastic}`.
     Silent fallback to mock data on any inference failure.
     """
-    try:
-        return detect_macroplastic(aoi_id, s2_tile_path)
-    except RuntimeError as exc:
-        raise _as_http_error(exc) from exc
+    return _run_detection(aoi_id, s2_tile_path=s2_tile_path, bbox=bbox, polygon=polygon)
 
 
 @router.get("/forecast")
-async def forecast_drift(aoi_id: str = "mumbai", hours: int = 24):
+async def forecast_drift(
+    aoi_id: str = "mumbai",
+    hours: int = 24,
+    bbox: str | None = None,
+    polygon: str | None = None,
+):
     """Detect → tracker. Returns drifted particle positions + density contours
     for the requested horizon (+24/+48/+72 h).
     """
     if hours not in (24, 48, 72):
         raise HTTPException(status_code=400,
                             detail="Invalid forecast step. Allowed: 24, 48, 72.")
+    base_detect = _run_detection(aoi_id, bbox=bbox, polygon=polygon)
     try:
-        base_detect = detect_macroplastic(aoi_id)
         return simulate_drift(base_detect, aoi_id, hours)
     except RuntimeError as exc:
         raise _as_http_error(exc) from exc
 
 
 @router.get("/mission")
-async def plan_mission(aoi_id: str = "mumbai"):
+async def plan_mission(
+    aoi_id: str = "mumbai",
+    bbox: str | None = None,
+    polygon: str | None = None,
+):
     """Detect → greedy+2-opt TSP. Returns a closed vessel route with waypoints."""
+    base_detect = _run_detection(aoi_id, bbox=bbox, polygon=polygon)
     try:
-        base_detect = detect_macroplastic(aoi_id)
         return calculate_cleanup_mission(base_detect, aoi_id)
     except RuntimeError as exc:
         raise _as_http_error(exc) from exc
 
 
 @router.get("/dashboard/metrics")
-async def get_dashboard_stats(aoi_id: str = "mumbai"):
+async def get_dashboard_stats(
+    aoi_id: str = "mumbai",
+    bbox: str | None = None,
+    polygon: str | None = None,
+):
     """Aggregated stats + biofouling-vs-age chart data for UI side-panels.
 
     Derives totals from the real detection call when it produces features;
     falls back to `mock_data.get_mock_dashboard_metrics` otherwise.
     """
-    try:
-        base_detect = detect_macroplastic(aoi_id)
-    except RuntimeError as exc:
-        raise _as_http_error(exc) from exc
+    base_detect = _run_detection(aoi_id, bbox=bbox, polygon=polygon)
     feats = base_detect.get("features", [])
     if not feats:
         return get_mock_dashboard_metrics(aoi_id)
@@ -138,7 +165,12 @@ async def get_dashboard_stats(aoi_id: str = "mumbai"):
 
 
 @router.get("/mission/export")
-async def export_mission_file(aoi_id: str = "mumbai", format: str = "gpx"):
+async def export_mission_file(
+    aoi_id: str = "mumbai",
+    format: str = "gpx",
+    bbox: str | None = None,
+    polygon: str | None = None,
+):
     """Download the cleanup mission as GPX (Coast Guard nav), GeoJSON, or PDF briefing.
 
     Uses the real `backend.mission.export` module (matplotlib + reportlab +
@@ -154,7 +186,7 @@ async def export_mission_file(aoi_id: str = "mumbai", format: str = "gpx"):
 
     strict = strict_mode_enabled()
 
-    base_detect = detect_macroplastic(aoi_id)
+    base_detect = _run_detection(aoi_id, bbox=bbox, polygon=polygon)
     plan = calculate_cleanup_mission_plan(base_detect, aoi_id)
 
     if plan is None or not plan.waypoints:

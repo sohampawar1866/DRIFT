@@ -55,6 +55,16 @@ def _read_tile_bands(tile_path: Path) -> tuple[np.ndarray, rasterio.Affine, str]
         bands = src.read().astype(np.float32)  # (N_bands, H, W)
         transform = src.transform
         crs = src.crs.to_string()
+
+    # STAC fallbacks can provide only a subset of bands (e.g., red/nir/tci).
+    # Pad to 11 channels so downstream feature extraction remains operational.
+    if bands.shape[0] < 11:
+        padded = np.zeros((11, bands.shape[1], bands.shape[2]), dtype=np.float32)
+        padded[:bands.shape[0], :, :] = bands
+        bands = padded
+    elif bands.shape[0] > 11:
+        bands = bands[:11, :, :]
+
     if bands.max() > 1.5:  # heuristic: raw DN
         bands = (bands - 1000.0) / 10000.0
     return bands, transform, crs
