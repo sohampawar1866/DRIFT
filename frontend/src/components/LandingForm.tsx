@@ -37,7 +37,7 @@ export const LandingForm: React.FC = () => {
 
   const [coastalGeoJson, setCoastalGeoJson] = useState<any>({ type: 'FeatureCollection', features: [] });
   const [searchHistory, setSearchHistory] = useState<any[]>([]);
-  const [hoverInfo, setHoverInfo] = useState<{ lng: number, lat: number, x: number, y: number } | null>(null);
+  const [hoverInfo, setHoverInfo] = useState<{ lng: number, lat: number, x: number, y: number, hasObject: boolean } | null>(null);
 
   React.useEffect(() => {
     // Fetch global history from the backend
@@ -271,7 +271,13 @@ export const LandingForm: React.FC = () => {
           onClick={handleMapClick}
           onHover={(info) => {
             if (info.coordinate) {
-              setHoverInfo({ lng: info.coordinate[0], lat: info.coordinate[1], x: info.x, y: info.y });
+              setHoverInfo({
+                lng: info.coordinate[0],
+                lat: info.coordinate[1],
+                x: info.x,
+                y: info.y,
+                hasObject: Boolean(info.object)
+              });
             } else {
               setHoverInfo(null);
             }
@@ -309,7 +315,7 @@ export const LandingForm: React.FC = () => {
           <Map mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" />
         </DeckGL>
 
-        {hoverInfo && (
+        {hoverInfo && !hoverInfo.hasObject && (
           <div style={{
             position: 'absolute',
             left: hoverInfo.x + 15,
