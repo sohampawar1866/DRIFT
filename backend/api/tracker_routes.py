@@ -184,6 +184,11 @@ async def validate_point(payload: PointCheck):
 async def get_searches():
     return get_history()
 
+@router.delete("/search")
+async def clear_searches():
+    save_history([])
+    return {"message": "History cleared", "count": 0}
+
 @router.post("/revisit/{record_id}")
 async def reactivate_search(record_id: str):
     history = get_history()
