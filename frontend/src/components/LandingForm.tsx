@@ -20,7 +20,7 @@ export const LandingForm: React.FC = () => {
   const location = useLocation();
   const [viewState, setViewState] = useState(INITIAL_VIEW_STATE);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
-  
+
   React.useEffect(() => {
     if (location.state && location.state.highlightedId) {
       setHighlightedId(location.state.highlightedId);
@@ -30,14 +30,14 @@ export const LandingForm: React.FC = () => {
       return () => clearTimeout(timer);
     }
   }, [location.state]);
-  
+
   // Custom Drawing State (Forcing 4-point Quadrilaterals/Trapezoids)
   const [drawingPoints, setDrawingPoints] = useState<[number, number][]>([]);
   const [currentSelection, setCurrentSelection] = useState<any>(null);
 
   const [coastalGeoJson, setCoastalGeoJson] = useState<any>({ type: 'FeatureCollection', features: [] });
   const [searchHistory, setSearchHistory] = useState<any[]>([]);
-  const [hoverInfo, setHoverInfo] = useState<{lng: number, lat: number, x: number, y: number} | null>(null);
+  const [hoverInfo, setHoverInfo] = useState<{ lng: number, lat: number, x: number, y: number } | null>(null);
 
   React.useEffect(() => {
     // Fetch global history from the backend
@@ -60,29 +60,29 @@ export const LandingForm: React.FC = () => {
   const handleMapClick = useCallback((info: any) => {
     if (!info.coordinate) return;
     const [lng, lat] = info.coordinate;
-    
+
     setDrawingPoints(prev => {
       // If we already have a box, a new click resets the drawing board
       if (prev.length === 4) {
         setCurrentSelection(null);
         return [[lng, lat]];
       }
-      
+
       const newPoints = [...prev, [lng, lat] as [number, number]];
-      
+
       if (newPoints.length === 4) {
         // Build the valid GeoJSON polygon (closing the loop by repeating the first point)
         const polygon = turf.polygon([[...newPoints, newPoints[0]]]);
         setCurrentSelection(polygon);
       }
-      
+
       return newPoints;
     });
   }, []);
 
   // Deck.GL Layers
   const activeHistory = searchHistory.slice(-5);
-  
+
   const layers = [
     // --- COASTAL VULNERABILITY (JAGGED EXACT BORDERS) ---
     new GeoJsonLayer({
@@ -92,7 +92,7 @@ export const LandingForm: React.FC = () => {
       filled: false,
       getLineColor: (f: any) => {
         const i = f.properties.intensity || 0;
-        return i > 0.05 ? [255, Math.max(0, 200 - i * 400), 0, 255] : [0, 255, 100, 255]; 
+        return i > 0.05 ? [255, Math.max(0, 200 - i * 400), 0, 255] : [0, 255, 100, 255];
       },
       getLineWidth: (f: any) => Math.max(50, f.properties.intensity * 400),
       lineWidthMinPixels: 3,
@@ -110,7 +110,7 @@ export const LandingForm: React.FC = () => {
       getWidth: 5,
       pickable: true
     }),
-    
+
     // --- IMPACT ZONES (DOTS ON COAST) ---
     new ScatterplotLayer({
       id: 'impact-zones',
@@ -129,7 +129,7 @@ export const LandingForm: React.FC = () => {
       getPolygon: (d: any) => d.coordinates,
       getFillColor: (d: any) => {
         if (d.id === highlightedId) return [255, 255, 255, 200];
-        return [...getDensityColor(d.density).slice(0,3), 80] as [number,number,number,number];
+        return [...getDensityColor(d.density).slice(0, 3), 80] as [number, number, number, number];
       },
       getLineColor: (d: any) => {
         if (d.id === highlightedId) return [255, 255, 255, 255];
@@ -152,7 +152,7 @@ export const LandingForm: React.FC = () => {
       getWidth: 150,
       widthMinPixels: 2
     }),
-    
+
     // Draw the corner nodes as glowing dots
     new ScatterplotLayer({
       id: 'drawing-nodes',
@@ -162,7 +162,7 @@ export const LandingForm: React.FC = () => {
       getRadius: 300,
       radiusMinPixels: 5
     }),
-    
+
     // Fill the polygon once closed
     currentSelection && new PolygonLayer({
       id: 'drawing-fill',
@@ -179,18 +179,18 @@ export const LandingForm: React.FC = () => {
         await axios.post('http://localhost:8000/api/v1/tracker/search', {
           coordinates: drawingPoints
         });
-        
+
         // Fetch globally updated search history instead of local hack
         const histRes = await axios.get('http://localhost:8000/api/v1/tracker/search');
         setSearchHistory(histRes.data);
-        
+
         // Let's reload coastline intensity to respond instantly to the backend update
         const coastRes = await axios.get('http://localhost:8000/api/v1/tracker/coastline');
         setCoastalGeoJson(coastRes.data);
-        
+
         const center = turf.centerOfMass(currentSelection).geometry.coordinates;
         const customAoiId = `custom_${center[0].toFixed(4)}_${center[1].toFixed(4)}`;
-        
+
         // Reset local selection drawing state so we can see the popups
         setDrawingPoints([]);
         setCurrentSelection(null);
@@ -213,7 +213,7 @@ export const LandingForm: React.FC = () => {
     <div style={{ position: 'relative', width: '100%', height: '100vh', backgroundColor: '#0a0a0a' }}>
       <DeckGL
         initialViewState={viewState}
-        onViewStateChange={({viewState}) => setViewState(viewState)}
+        onViewStateChange={({ viewState }) => setViewState(viewState)}
         controller={true}
         layers={layers}
         onClick={handleMapClick}
@@ -224,9 +224,9 @@ export const LandingForm: React.FC = () => {
             setHoverInfo(null);
           }
         }}
-        getTooltip={({object}) => {
+        getTooltip={({ object }) => {
           if (!object) return null;
-          if (object.properties?.name) return object.properties.name; 
+          if (object.properties?.name) return object.properties.name;
           if (!object.density) return null;
           const risk = object.density > 0.7 ? "CRITICAL" : (object.density > 0.4 ? "ELEVATED" : "LOW");
           const color = risk === "CRITICAL" ? "#ff1744" : risk === "ELEVATED" ? "#ffea00" : "#00e5ff";
@@ -272,7 +272,7 @@ export const LandingForm: React.FC = () => {
           border: '1px solid rgba(0, 229, 255, 0.4)',
           boxShadow: '0 4px 10px rgba(0,0,0,0.5)'
         }}>
-          {hoverInfo.lat.toFixed(4)}&deg;N<br/>
+          {hoverInfo.lat.toFixed(4)}&deg;N<br />
           {hoverInfo.lng.toFixed(4)}&deg;E
         </div>
       )}
@@ -280,31 +280,31 @@ export const LandingForm: React.FC = () => {
       {/* Floating HUD Panel */}
       <div style={{ position: 'absolute', top: '2rem', right: '2rem', background: 'rgba(10, 15, 25, 0.85)', backdropFilter: 'blur(10px)', padding: '1.5rem', borderRadius: '12px', border: '1px solid rgba(0, 229, 255, 0.3)', boxShadow: '0 8px 32px rgba(0,229,255,0.2)', width: '380px', zIndex: 1000, color: '#e0f7fa' }}>
         <h1 style={{ margin: '0 0 1rem 0', fontSize: '1.8rem', color: '#00e5ff', textTransform: 'uppercase', letterSpacing: '2px', textShadow: '0 0 10px rgba(0,229,255,0.5)' }}>DRIFT_OS v2.0</h1>
-        
+
         {/* Trajectory Guide for UX */}
         <div style={{ marginBottom: '1.5rem', fontSize: '0.95rem', lineHeight: '1.6' }}>
-          <strong style={{ color: '#00e5ff' }}>&gt; SECTOR DEPLOYMENT</strong><br/>
+          <strong style={{ color: '#00e5ff' }}>&gt; SECTOR DEPLOYMENT</strong><br />
           Click 4 points onto the map surface to define a target trapezoid over the ocean.
-          <br/><br/>
+          <br /><br />
           <strong>Points Logged:</strong> {drawingPoints.length}/4
         </div>
-        
+
         {drawingPoints.length === 4 && (
           <div style={{ padding: '1rem', background: 'rgba(0, 229, 255, 0.1)', borderLeft: '4px solid #00e5ff', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-            <span style={{ color: '#00e5ff', fontWeight: 'bold' }}>[ SECTOR LOCKED ]</span><br/>
+            <span style={{ color: '#00e5ff', fontWeight: 'bold' }}>[ SECTOR LOCKED ]</span><br />
             Coordinates captured. Ready for deployment.
           </div>
         )}
 
-        <button 
-          onClick={handleSubmit} 
+        <button
+          onClick={handleSubmit}
           disabled={drawingPoints.length !== 4}
           style={{ width: '100%', padding: '1rem', background: drawingPoints.length === 4 ? '#00e5ff' : 'rgba(255,255,255,0.1)', color: drawingPoints.length === 4 ? '#000' : '#666', border: 'none', borderRadius: '6px', cursor: drawingPoints.length === 4 ? 'pointer' : 'not-allowed', fontWeight: 'bold', fontSize: '1rem', textTransform: 'uppercase', transition: 'all 0.3s ease', boxShadow: drawingPoints.length === 4 ? '0 0 15px rgba(0,229,255,0.5)' : 'none' }}>
           {drawingPoints.length === 4 ? 'Initialize AWS Deep Scan' : 'Awaiting 4-Point Target...'}
         </button>
 
-        <button 
-          onClick={() => window.location.href='/history'} 
+        <button
+          onClick={() => window.location.href = '/drift/history'}
           style={{ marginTop: '15px', width: '100%', background: 'transparent', border: '1px solid #333', color: '#9ca3af', padding: '10px', borderRadius: '4px', cursor: 'pointer', transition: 'background 0.3s ease', fontWeight: 'bold' }}>
           ACCESS DEPLOYMENT LOGS
         </button>
