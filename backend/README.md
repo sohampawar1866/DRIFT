@@ -1,92 +1,146 @@
-# DRIFT: Backend API Reference and Setup Guide
+# DRIFT Backend Setup and Operations
 
-This document is dedicated to helping anyone on the team get the backend API running on their device, whether it is Mac, Windows, or Linux, without compilation headaches.
+This guide is for the backend intelligence layer only: ML detection, drift forecast, mission planning, and mission export.
 
-## 🛑 Critical Prerequisite: Python Version
-The backend relies on `geopandas` and `shapely` for fast geospatial processing. These libraries require C-compilers to build from source **unless** you are on a stable, mainstream Python version.
+## 1) Requirements
 
-**DO NOT USE Python 3.13 or 3.14+ yet.** Pre-built binary wheels are not yet stable for these alpha/beta versions for all geospatial packages, which will throw a "Failed to build shapely wheel" error.
+- Python available as `python`
+# DRIFT Backend Setup and Operations
 
-*   ✅ **Recommended:** Python 3.10, 3.11, or 3.12 (e.g., Python 3.11.9)
-*   ❌ **Don't use:** Python 3.9 (too old for some typing), Python 3.13/3.14 (too new, no precompiled wheels yet).
+This guide is for the backend intelligence layer only: ML detection, drift forecast, mission planning, and mission export.
 
----
+## 1) Requirements
 
-## 💻 1. Quick Setup for Mac / Linux Users
+- Python available as `python`
+- `pip` available as `python -m pip`
 
-Open your terminal and run these step-by-step:
+Repo constraint: backend targets Python `>=3.11,<3.13`.
+
+## 2) Setup on Mac
+
+Run from repo root:
 
 ```bash
-# 1. Navigate to the backend folder
-cd path/to/OceanTrace/backend
-
-# 2. Create the virtual environment using a stable python version
-python3.11 -m venv venv
-
-# 3. Activate the virtual environment
-source venv/bin/activate
-
-# 4. Install dependencies (pip will fetch pre-compiled wheels for shapely automatically)
-pip install --upgrade pip setuptools wheel
-pip install -r requirements.txt
-
-# 5. Start the API server
-uvicorn main:app --reload
+cd /path/to/DRIFT
+python -m venv backend/venv
+source backend/venv/bin/activate
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r backend/requirements.txt
 ```
 
----
+Note for Mac only:
+- if geospatial wheels fail during install, use a Python 3.11/3.12 interpreter and recreate the venv.
 
-## 🪟 2. Quick Setup for Windows Users
+## 3) Setup on Windows
 
-PowerShell or Command Prompt commands:
+Run from repo root in PowerShell:
 
 ```powershell
-# 1. Navigate to the backend folder
-cd path\to\OceanTrace\backend
-
-# 2. Create the virtual environment using your stable python installation
-python -m venv venv
-
-# 3. Activate the virtual environment
-# Note: If you get an ExecutionPolicy error, run: Set-ExecutionPolicy Unrestricted -Scope CurrentUser
-.\venv\Scripts\activate
-
-# 4. Install dependencies
+cd C:\path\to\DRIFT
+python -m venv backend\venv
+.\backend\venv\Scripts\activate
 python -m pip install --upgrade pip setuptools wheel
-pip install -r requirements.txt
-
-# 5. Start the API server
-uvicorn main:app --reload
+python -m pip install -r backend\requirements.txt
 ```
 
----
+## 4) Run backend API
 
-### Alternative for Windows: Using Conda (If pip fails)
-Windows can sometimes still struggle with geospatial dependencies like GDAL, Fiona (nested inside Geopandas) and Shapely. If `pip install -r requirements.txt` fails, **use Conda** (Miniconda or Anaconda):
+From repo root:
 
 ```bash
-# Creates an entirely isolated python 3.11 environment with conda
-conda create -n drift_env python=3.11
-conda activate drift_env
-
-# Install geopandas through conda explicitly, allowing it to handle all C-dependencies
-conda install -c conda-forge geopandas shapely
-
-# Install the rest
-pip install fastapi uvicorn pydantic pydantic-settings
+source backend/venv/bin/activate
+uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
----
+On Windows PowerShell:
 
-## 🌐 3. Usage & Access
+```powershell
+.\backend\venv\Scripts\activate
+uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+```
 
-Once `uvicorn` claims the application startup is complete, open your browser and head to:
-👉 **[http://localhost:8000/docs](http://localhost:8000/docs)**
+- API docs: `http://localhost:8000/docs`
+- Health endpoint: `GET /`
 
-This is the interactive Swagger UI where you can immediately test the endpoints:
-*   `GET /api/v1/detect`
-*   `GET /api/v1/forecast`
-*   `GET /api/v1/mission`
+## 5) Runtime modes
 
-**Troubleshooting**:
-*   *React Frontend gets blocked by CORS?* Ensure the FastAPI settings in `main.py` explicitly allow all origins (`allow_origins=["*"]`) for local development, which is already configured in the skeleton.
+Default mode is demo-safe and allows mock fallback when real data/ML is unavailable.
+
+- Force mock: `DRIFT_FORCE_MOCK=1`
+- Strict mode (disable silent fallback):
+  - `DRIFT_STRICT_MODE=1`
+  - or `DRIFT_DISABLE_FALLBACKS=1`
+
+Example strict run:
+
+```bash
+DRIFT_STRICT_MODE=1 uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+## 6) Data prerequisites for real chain
+
+For true non-mock behavior:
+
+- model checkpoint for real weights:
+  - place the file inside `backend/ml/checkpoints/`
+  - accepted filenames: `our_real.pt` or `our_real.pth` or `our_real.pkl`
+  - set `ml.weights_source: our_real` in `backend/config.yaml`
+- expected save format: `torch.save(model.state_dict(), path)`
+- MARIDA dataset under `DRIFT/MARIDA` (patches and splits)
+- optional physics NetCDF files:
+  - `data/env/cmems_currents_72h.nc`
+  - `data/env/era5_winds_72h.nc`
+
+If env files are missing, forecast uses synthetic currents (schema-valid, less realistic).
+
+## 7) Validation
+
+Run from repo root with backend venv active:
+
+```bash
+python -m pytest -q backend/e2e_test.py
+python -m pytest -q backend/tests
+```
+
+Targeted suites:
+
+```bash
+python -m pytest -q backend/tests/integration/test_inference_dummy.py
+python -m pytest -q backend/tests/integration/test_tracker_synth.py
+python -m pytest -q backend/tests/integration/test_planner_synth.py
+```
+
+Some tests are skipped when required data (for example MARIDA patches) is unavailable.
+
+## 8) Chain runners
+
+Dummy chain:
+
+```bash
+python scripts/run_full_chain_dummy.py --use-synth-env
+```
+
+Real chain (strict, no fallback):
+
+```bash
+python scripts/run_full_chain_real.py \
+  --tile /absolute/path/to/tile.tif \
+  --aoi gulf_of_mannar \
+  --origin 78.9 9.2 \
+  --no-fallback
+```
+Dummy chain:
+
+```bash
+python scripts/run_full_chain_dummy.py --use-synth-env
+```
+
+Real chain (strict, no fallback):
+
+```bash
+python scripts/run_full_chain_real.py \
+  --tile /absolute/path/to/tile.tif \
+  --aoi gulf_of_mannar \
+  --origin 78.9 9.2 \
+  --no-fallback
+```

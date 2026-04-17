@@ -2,6 +2,7 @@ import os
 import json
 import urllib.request
 import shutil
+import logging
 from pystac_client import Client
 import datetime
 from datetime import timedelta
@@ -9,25 +10,55 @@ from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 # Grab the timeout from .env (defaults to 30 seconds if missing)
 STAC_FETCH_TIMEOUT = int(os.getenv("STAC_FETCH_TIMEOUT", 30))
 
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "cache")
 
+
+def _required_band_paths(item_folder: str) -> dict:
+    return {
+        "nir": os.path.join(item_folder, "nir.tif"),
+        "red": os.path.join(item_folder, "red.tif"),
+    }
+
+
+def _has_required_bands(paths: dict) -> bool:
+    return all(os.path.exists(paths.get(name, "")) for name in ("nir", "red"))
+
+
+def _newest_valid_cache_dir(aoi_folder: str) -> str | None:
+    if not os.path.isdir(aoi_folder):
+        return None
+    valid: list[tuple[float, str]] = []
+    for entry in os.listdir(aoi_folder):
+        folder = os.path.join(aoi_folder, entry)
+        if not os.path.isdir(folder):
+            continue
+        if _has_required_bands(_required_band_paths(folder)):
+            valid.append((os.path.getmtime(folder), entry))
+    if not valid:
+        return None
+    valid.sort(key=lambda t: t[0], reverse=True)
+    return valid[0][1]
+
+
 def download_band(url: str, save_path: str):
     """Downloads a file if it doesn't already exist using atomic writes."""
     if not os.path.exists(save_path):
         tmp_path = save_path + ".tmp"
-        print(f"Downloading {url} to {tmp_path}...")
+        logger.info("stac: downloading %s -> %s", url, tmp_path)
         try:
             with urllib.request.urlopen(url, timeout=STAC_FETCH_TIMEOUT) as response, open(tmp_path, 'wb') as out_file:
                 shutil.copyfileobj(response, out_file)
-            os.rename(tmp_path, save_path)
+            os.replace(tmp_path, save_path)
         except Exception as e:
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
-            raise e
+            raise
+
 
 def query_sentinel2_l2a_aws(bbox: list, max_cloud_cover: int = 15, days_back: int = 14) -> dict:
     """
@@ -55,13 +86,23 @@ def query_sentinel2_l2a_aws(bbox: list, max_cloud_cover: int = 15, days_back: in
         query={"eo:cloud_cover": {"lt": max_cloud_cover}}
     )
     
-    items = list(search.items())
-    
+    items = [
+        it for it in search.items()
+        if it.datetime is not None
+    ]
+
     if not items:
         return {"error": "No low-cloud Sentinel-2 imagery found for this period and bbox."}
-        
-    # Select the most recent clean image
-    best_item = items[0]
+
+    # Select the most recent item with required bands.
+    items.sort(key=lambda it: it.datetime, reverse=True)
+    best_item = None
+    for item in items:
+        if item.assets.get("nir") and item.assets.get("red"):
+            best_item = item
+            break
+    if best_item is None:
+        return {"error": "No Sentinel-2 item had required 'nir' and 'red' assets."}
     
     return {
         "id": best_item.id,
@@ -78,6 +119,7 @@ def query_sentinel2_l2a_aws(bbox: list, max_cloud_cover: int = 15, days_back: in
         "geometry": best_item.geometry
     }
 
+
 def get_live_or_cached_imagery(aoi_id: str, bbox: list) -> dict:
     """
     Core Logic:
@@ -93,39 +135,30 @@ def get_live_or_cached_imagery(aoi_id: str, bbox: list) -> dict:
         # 1. Ask STAC for the newest image bounds
         stac_metadata = query_sentinel2_l2a_aws(bbox, max_cloud_cover=20, days_back=7)
     except Exception as e:
-        print(f"Network error asking AWS STAC: {e}. Attempting Fallback...")
+        logger.warning("stac: network error querying catalog for %s: %s", aoi_id, e)
     
     # 2. Offline Fallback Logic: Did we completely fail to talk to the internet?
     if stac_metadata is None or "error" in stac_metadata:
-        cached_dirs = [d for d in os.listdir(aoi_folder) if os.path.isdir(os.path.join(aoi_folder, d))]
-        if not cached_dirs:
+        newest_cached_id = _newest_valid_cache_dir(aoi_folder)
+        if not newest_cached_id:
             return {"error": "No internet connection, and no local fallback imagery found!"}
-        # Sort magically finds newest string ID if AWS naming conventions hold, else just pop one
-        newest_cached_id = sorted(cached_dirs)[-1]
-        print(f"🔥 NO INTERNET: successfully falling back to local cache: {newest_cached_id}")
+        logger.info("stac: using local fallback cache for %s -> %s", aoi_id, newest_cached_id)
         
         return {
             "source": "local_fallback",
             "id": newest_cached_id,
-            "local_paths": {
-                "nir": os.path.join(aoi_folder, newest_cached_id, "nir.tif"),
-                "red": os.path.join(aoi_folder, newest_cached_id, "red.tif")
-            }
+            "local_paths": _required_band_paths(os.path.join(aoi_folder, newest_cached_id)),
         }
     
     # 3. Online Success: We have a valid AWS image ID. Let's see if we already downloaded it today.
     item_id = stac_metadata["id"]
     item_folder = os.path.join(aoi_folder, item_id)
-    
-    local_paths = {
-        "nir": os.path.join(item_folder, "nir.tif"),
-        "red": os.path.join(item_folder, "red.tif")
-    }
+    local_paths = _required_band_paths(item_folder)
     
     # LOGICAL FIX: Check if the actual files exist, not just the folder!
     # If a previous download failed midway, the folder might exist but the .tif files are missing.
-    if os.path.exists(local_paths["nir"]) and os.path.exists(local_paths["red"]):
-        print(f"⚡ INSTANT CACHE HIT: Already downloaded {item_id} previously. Skipping download!")
+    if _has_required_bands(local_paths):
+        logger.info("stac: cache hit for %s -> %s", aoi_id, item_id)
         return {
             "source": "local_cache", 
             "id": item_id, 
@@ -133,16 +166,16 @@ def get_live_or_cached_imagery(aoi_id: str, bbox: list) -> dict:
         }
         
     # 4. First Time Seeing This Image: We must download it!
-    print(f"⬇️ DOWNLOADING NEW STAC TILE: {item_id}")
+    logger.info("stac: downloading new tile for %s -> %s", aoi_id, item_id)
     os.makedirs(item_folder, exist_ok=True)
     
     try:
         # Download only the subset of bands we actually need for FDI and basics to save time (NIR, Red)
         download_band(stac_metadata["assets"]["nir"], local_paths["nir"])
         download_band(stac_metadata["assets"]["red"], local_paths["red"])
-        print(f"✅ DOWNLOAD SUCCESS: Cached at {item_folder}")
+        logger.info("stac: download success for %s at %s", aoi_id, item_folder)
     except Exception as d_err:
-        print(f"Download failed midway: {d_err}")
+        logger.warning("stac: download failed for %s (%s)", aoi_id, d_err)
         return {"error": "Failed to download bands"}
         
     return {

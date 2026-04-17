@@ -212,8 +212,16 @@ def export_pdf(mission: MissionPlan,
     story = []
     story.append(Paragraph("<b>DRIFT Cleanup Mission Briefing</b>", styles["Title"]))
     story.append(Spacer(1, 0.3 * cm))
-    map_buf = _render_map_png(mission, forecast, dpi=150)
-    story.append(Image(map_buf, width=11 * cm, height=9 * cm))
+    # Fast path: API export passes forecast=None. Skip heavy geopandas/matplotlib
+    # map rendering in that mode to keep endpoint latency low.
+    if forecast is not None:
+        map_buf = _render_map_png(mission, forecast, dpi=150)
+        story.append(Image(map_buf, width=11 * cm, height=9 * cm))
+    else:
+        story.append(Paragraph(
+            "Map panel omitted in fast export mode (no forecast envelope provided).",
+            styles["Normal"],
+        ))
     story.append(Spacer(1, 0.3 * cm))
     rows = [["#", "Lon", "Lat", "ETA (h)", "Priority"]]
     for wp in mission.waypoints:

@@ -19,6 +19,7 @@ from typing import Any
 
 from backend.services.aoi_registry import demo_tile_for, resolve
 from backend.services.mock_data import get_mock_detection_geojson
+from backend.services.runtime_flags import strict_mode_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -156,14 +157,19 @@ def detect_macroplastic(aoi_id: str, s2_tile_path: str | None = None) -> dict[st
     """Detect sub-pixel plastic patches for an AOI.
 
     Returns a GeoJSON FeatureCollection dict in the legacy API shape the
-    frontend expects. Never raises — always returns a valid GeoJSON dict.
+    frontend expects. In strict mode, resolution/inference failures raise.
     """
+    strict = strict_mode_enabled()
+
     if os.environ.get("DRIFT_FORCE_MOCK", "").strip() == "1":
         logger.info("ai_detector: DRIFT_FORCE_MOCK=1 → serving mock for %s", aoi_id)
         return get_mock_detection_geojson(aoi_id)
 
     tile = _resolve_tile(aoi_id, s2_tile_path)
     if tile is None:
+        msg = f"ai_detector: no tile resolved for {aoi_id}"
+        if strict:
+            raise RuntimeError(f"{msg}; strict mode disallows mock fallback")
         logger.info("ai_detector: no tile resolved for %s → serving mock", aoi_id)
         return get_mock_detection_geojson(aoi_id)
 
@@ -184,6 +190,10 @@ def detect_macroplastic(aoi_id: str, s2_tile_path: str | None = None) -> dict[st
         # ({features:[]}). Frontend will handle it gracefully.
         return _detection_fc_to_api_shape(fc, aoi_id)
     except Exception as e:
+        if strict:
+            raise RuntimeError(
+                f"ai_detector: real inference failed for {aoi_id} (tile={tile}): {e}"
+            ) from e
         logger.warning(
             "ai_detector: real inference failed for %s (tile=%s): %s → fallback to mock",
             aoi_id, tile, e,
