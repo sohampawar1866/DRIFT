@@ -32,6 +32,17 @@ PER_DET_LEVEL = 0.90
 GLOBAL_LEVEL = 0.75
 JITTER_M = 50.0
 
+# Optional EnvBundle context for bio-fouling decay on density polygons.
+# Set/cleared via set_bio_env() before forecast_drift() if desired.
+_BIO_ENV_CTX = None
+
+
+def set_bio_env(env_bundle) -> None:
+    """Inject an EnvBundle so density polygons get confidence_decayed +
+    chl/sst properties. Pass None to clear."""
+    global _BIO_ENV_CTX
+    _BIO_ENV_CTX = env_bundle
+
 
 def _utm_zone_from_lonlat(lon: float, lat: float) -> int:
     """Return EPSG code for the UTM zone containing (lon, lat). Northern hemisphere only."""
@@ -120,15 +131,30 @@ def _build_frame(
     features = []
     all_alive_utm: list[np.ndarray] = []
     global_zone: int | None = None
+    bio_env = _BIO_ENV_CTX  # optional EnvBundle injected via set_bio_env()
     for (pts, alive, zone) in per_det_state:
         alive_pts = pts[alive]
         if alive_pts.shape[0] >= 3:
             polys = kde_contour_polygons(alive_pts, utm_epsg=zone, level=PER_DET_LEVEL)
             for p in polys:
+                props = {"density": 1.0, "scope": "per_detection", "level": PER_DET_LEVEL}
+                if bio_env is not None:
+                    try:
+                        from backend.physics.bio_fouling import adjust_confidence
+                        c = p.centroid
+                        chl = bio_env.sample_chl(c.x, c.y)
+                        sst = bio_env.sample_sst(c.x, c.y)
+                        props["confidence_decayed"] = adjust_confidence(
+                            1.0, age_hours=float(hour), chl_mg_m3=chl, sst_c=sst
+                        )
+                        props["chl_mg_m3"] = chl
+                        props["sst_c"] = sst
+                    except Exception:
+                        pass
                 features.append(Feature(
                     type="Feature",
                     geometry=mapping(p),
-                    properties={"density": 1.0, "scope": "per_detection", "level": PER_DET_LEVEL},
+                    properties=props,
                 ))
         if alive_pts.shape[0] > 0:
             all_alive_utm.append(alive_pts)
