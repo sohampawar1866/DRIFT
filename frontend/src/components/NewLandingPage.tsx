@@ -16,7 +16,7 @@ const staggerContainer = {
 };
 const fadeUp = {
   hidden: { opacity: 0, y: 30 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] } },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] as [number, number, number, number] } },
 };
 
 export const NewLandingPage: React.FC = () => {
@@ -232,7 +232,7 @@ export const NewLandingPage: React.FC = () => {
             initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.3 }}
-            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] as [number, number, number, number] }}
           >
             <p className="text-xs font-inter uppercase tracking-[0.3em] text-accent-amber mb-6">The Problem</p>
             <h2 className="text-4xl md:text-7xl font-syne font-normal tracking-tight mb-10">
@@ -285,7 +285,7 @@ export const NewLandingPage: React.FC = () => {
             initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.3 }}
-            transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] as [number, number, number, number] }}
           >
             <p className="text-xs font-inter uppercase tracking-[0.3em] text-accent-cyan mb-6">Core Capabilities</p>
             <h2 className="text-4xl md:text-6xl font-syne font-medium tracking-tight mb-16">
@@ -320,7 +320,7 @@ export const NewLandingPage: React.FC = () => {
             initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.3 }}
-            transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] as [number, number, number, number] }}
           >
             <p className="text-xs font-inter uppercase tracking-[0.3em] text-accent-cyan mb-6">Workflow</p>
             <h2 className="text-4xl md:text-6xl font-syne font-medium tracking-tight mb-16">
@@ -358,7 +358,7 @@ export const NewLandingPage: React.FC = () => {
             initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.3 }}
-            transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] as [number, number, number, number] }}
           >
             <p className="text-xs font-inter uppercase tracking-[0.3em] text-accent-cyan mb-6">Under the Hood</p>
             <h2 className="text-4xl md:text-6xl font-syne font-medium tracking-tight mb-16">
@@ -392,7 +392,7 @@ export const NewLandingPage: React.FC = () => {
             initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.3 }}
-            transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] as [number, number, number, number] }}
           >
             <p className="text-xs font-inter uppercase tracking-[0.3em] text-accent-cyan mb-6">System Design</p>
             <h2 className="text-4xl md:text-5xl font-syne font-medium tracking-tight mb-12">
@@ -405,7 +405,7 @@ export const NewLandingPage: React.FC = () => {
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.2 }}
-            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] as [number, number, number, number] }}
           >
             <div className="grid md:grid-cols-3 gap-8">
               {[
@@ -450,7 +450,7 @@ export const NewLandingPage: React.FC = () => {
             initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.5 }}
-            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] as [number, number, number, number] }}
           >
             <h2 className="text-4xl md:text-6xl font-syne font-medium tracking-tight mb-6">
               Ready to scan the ocean?
