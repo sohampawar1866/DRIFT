@@ -1,114 +1,100 @@
-# Environment
-venv/
-env/
-.venv/
+# =====================
+# Environment / secrets
+# =====================
 .env
+.env.*
+!.env.example
 
+# =====================
 # Python
+# =====================
 __pycache__/
-*.pyc
-*.pyo
-*.pye
+*.py[cod]
 *.pyd
-*.zip
 *.egg
 *.egg-info/
-dist/
 build/
+dist/
+*.whl
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
 
-# OS specific
+# Virtual environments
+.venv/
+venv/
+env/
+backend/venv/
+
+# =====================
+# Node / frontend
+# =====================
+node_modules/
+frontend/node_modules/
+.cache/
+.parcel-cache/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =====================
+# Editors / OS
+# =====================
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
 .DS_Store
 Thumbs.db
 
-# Project Data / Over-sized files
-# NOTE: using data/* (not data/) so we can re-include specific subdirs below.
+# =====================
+# Data / large artifacts
+# =====================
+# Keep only whitelisted demo artifacts under /data.
 data/*
-*.geojson
-*.shp
-*.gpkg
-
-# Phase 3 D-11: commit the trimmed Indian EEZ coastline basemap (< 100 KB)
 !data/basemap/
-!data/basemap/*
-
-# Phase 3 D-13 + D-16: commit pre-baked 4-AOI fallback JSONs (< 50 KB total)
-# Required on disk at demo time for silent fallback per D-12. Regenerate with
-# `python -m scripts.prebake_demo` whenever weights or MARIDA change.
+!data/basemap/**
 !data/prebaked/
-!data/prebaked/*
+!data/prebaked/**
 
-# MARIDA dataset (4.5 GB — PITFALL mi3, never commit)
+# Backend runtime/cache data (keep coastline source file only).
+backend/data/*
+!backend/data/india_coastline_segmented.geojson
+
+# NetCDF + rasters (downloaded/generated)
+data/env/*.nc
+backend/data/*.nc
+*.tif
+*.tiff
+
+# Vector sidecar files generated from shapefiles
+*.gpkg
+*.shp
+*.shx
+*.dbf
+*.cpg
+*.prj
+
+# MARIDA dataset (very large)
 MARIDA/
 
-# Model checkpoints (PITFALL M12 — use kagglehub, not git)
-# NOTE: kagglehub caches to ~/.cache/kagglehub/ which is OUTSIDE the repo,
-# so no gitignore rule is needed for it. The *.pth and *.ckpt rules below
-# catch any in-repo checkpoints if someone accidentally copies one in.
+# Model checkpoints (never commit trained weights)
 *.pth
 *.ckpt
-
-# ML checkpoints (user-supplied, gitignored per D-02 + INFRA-05)
 backend/ml/checkpoints/*.pt
 backend/ml/checkpoints/*.pth
 backend/ml/checkpoints/*.pkl
 backend/ml/checkpoints/*.ckpt
 !backend/ml/checkpoints/.gitkeep
-data/env/*.nc
 
-# Phase metrics (generated at runtime)
+# Generated metrics
 .planning/metrics/
-
-# Node (for future frontend)
-node_modules/.tmp_e2e/
-
-# --- merged from team's main branch ---
-# =====================
-# Environment / Secrets
-# =====================
-.env.*
-!.env.example
-# =====================
-# Node.js / Frontend
-# =====================
-node_modules/
-.cache/
-.parcel-cache/
-.vite/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-package-lock.json
-# =====================
-# Python / Backend
-# =====================
-.mypy_cache/
-.ruff_cache/
-htmlcov/
-.coverage
-*.whl
-# =====================
-# =====================
-*.swp
-*.swo
-*~
-# =====================
-# IDE / Editor
-# =====================
-.vscode/
-.idea/
-*.sublime-project
-*.sublime-workspace
-# =====================
-# Project Data / Large files
-# =====================
-# NOTE: merged with Phase 1/2/3 `data/*` rule at top of file.
-# The `!data/basemap/` and `!data/prebaked/` whitelists above are
-# intentionally re-included by NOT repeating the broad `data/` rule here.
-backend/data/*
-!backend/data/india_coastline_segmented.geojson
-*.tif
-*.tiff
-*.nc

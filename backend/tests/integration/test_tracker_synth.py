@@ -26,7 +26,7 @@ from backend.physics.tracker import DENSITY_HOURS, forecast_drift
 # ---------- helpers ----------
 
 def _build_currents(lon, lat, n_hours=73, uo=0.0, vo=0.0, nan_east_of=None):
-    t = pd.date_range("2026-04-17", periods=n_hours, freq="h")
+    t = pd.date_range("2026-04-17", periods=n_hours, freq="h").to_numpy(dtype="datetime64[ns]")
     shape = (n_hours, len(lat), len(lon))
     uo_arr = np.full(shape, uo, dtype=np.float32)
     vo_arr = np.full(shape, vo, dtype=np.float32)
@@ -48,7 +48,7 @@ def _build_currents(lon, lat, n_hours=73, uo=0.0, vo=0.0, nan_east_of=None):
 
 
 def _build_winds(lon, lat, n_hours=73, u10=0.0, v10=0.0):
-    t = pd.date_range("2026-04-17", periods=n_hours, freq="h")
+    t = pd.date_range("2026-04-17", periods=n_hours, freq="h").to_numpy(dtype="datetime64[ns]")
     shape = (n_hours, len(lat), len(lon))
     u = np.full(shape, u10, dtype=np.float32)
     v = np.full(shape, v10, dtype=np.float32)

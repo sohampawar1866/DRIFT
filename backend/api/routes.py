@@ -35,10 +35,15 @@ from backend.services.mock_data import (
     get_mock_aois,
     get_mock_dashboard_metrics,
 )
+from backend.services.runtime_flags import strict_mode_enabled
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1")
+
+
+def _as_http_error(exc: Exception) -> HTTPException:
+    return HTTPException(status_code=503, detail=str(exc))
 
 
 @router.get("/aois")
@@ -63,7 +68,10 @@ async def detect_plastic(aoi_id: str = "mumbai", s2_tile_path: str | None = None
     `{id, confidence, area_sq_meters, age_days, type, fraction_plastic}`.
     Silent fallback to mock data on any inference failure.
     """
-    return detect_macroplastic(aoi_id, s2_tile_path)
+    try:
+        return detect_macroplastic(aoi_id, s2_tile_path)
+    except RuntimeError as exc:
+        raise _as_http_error(exc) from exc
 
 
 @router.get("/forecast")
@@ -74,15 +82,21 @@ async def forecast_drift(aoi_id: str = "mumbai", hours: int = 24):
     if hours not in (24, 48, 72):
         raise HTTPException(status_code=400,
                             detail="Invalid forecast step. Allowed: 24, 48, 72.")
-    base_detect = detect_macroplastic(aoi_id)
-    return simulate_drift(base_detect, aoi_id, hours)
+    try:
+        base_detect = detect_macroplastic(aoi_id)
+        return simulate_drift(base_detect, aoi_id, hours)
+    except RuntimeError as exc:
+        raise _as_http_error(exc) from exc
 
 
 @router.get("/mission")
 async def plan_mission(aoi_id: str = "mumbai"):
     """Detect → greedy+2-opt TSP. Returns a closed vessel route with waypoints."""
-    base_detect = detect_macroplastic(aoi_id)
-    return calculate_cleanup_mission(base_detect, aoi_id)
+    try:
+        base_detect = detect_macroplastic(aoi_id)
+        return calculate_cleanup_mission(base_detect, aoi_id)
+    except RuntimeError as exc:
+        raise _as_http_error(exc) from exc
 
 
 @router.get("/dashboard/metrics")
@@ -92,7 +106,10 @@ async def get_dashboard_stats(aoi_id: str = "mumbai"):
     Derives totals from the real detection call when it produces features;
     falls back to `mock_data.get_mock_dashboard_metrics` otherwise.
     """
-    base_detect = detect_macroplastic(aoi_id)
+    try:
+        base_detect = detect_macroplastic(aoi_id)
+    except RuntimeError as exc:
+        raise _as_http_error(exc) from exc
     feats = base_detect.get("features", [])
     if not feats:
         return get_mock_dashboard_metrics(aoi_id)
@@ -135,10 +152,20 @@ async def export_mission_file(aoi_id: str = "mumbai", format: str = "gpx"):
     if fmt == "json":
         fmt = "geojson"
 
+    strict = strict_mode_enabled()
+
     base_detect = detect_macroplastic(aoi_id)
     plan = calculate_cleanup_mission_plan(base_detect, aoi_id)
 
     if plan is None or not plan.waypoints:
+        if strict:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "No mission plan could be constructed from detections; "
+                    "strict mode disallows mock export fallback"
+                ),
+            )
         # Fall back to mock-mission GPX/JSON — prevents broken downloads mid-demo.
         logger.info("export: no real plan for %s → mock mission payload (%s)", aoi_id, fmt)
         mock_mission = calculate_cleanup_mission(base_detect, aoi_id)
@@ -186,6 +213,11 @@ async def export_mission_file(aoi_id: str = "mumbai", format: str = "gpx"):
                 filename=out.name,
             )
     except Exception as e:
+        if strict:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Mission export failed in strict mode: {e}",
+            ) from e
         logger.warning("export: %s format failed for %s: %s", fmt, aoi_id, e)
         coords = plan.route.model_dump().get("geometry", {}).get("coordinates", [])
         xml = _minimal_gpx(coords, aoi_id)

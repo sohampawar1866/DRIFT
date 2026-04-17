@@ -42,7 +42,7 @@ class ForecastFrame(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     hour: int = Field(ge=0, le=72)
     particle_positions: list[tuple[float, float]]  # (lon, lat)
-    density_polygons: FeatureCollection[Feature[Polygon, dict]]
+    density_polygons: FeatureCollection
 
 
 class ForecastEnvelope(BaseModel):

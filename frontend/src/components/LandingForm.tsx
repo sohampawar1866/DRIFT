@@ -15,11 +15,37 @@ const INITIAL_VIEW_STATE = {
   bearing: 0
 };
 
+// Sentinel-2 Red and NIR bands are 10m resolution.
+const SENTINEL2_PATCH_SIZE_METERS = 10;
+const VISUAL_PREVIEW_PATCH_SIZE_METERS = 100;
+const METERS_PER_DEG_LAT = 111320;
+
+function buildSentinelPatchSquare(lng: number, lat: number, patchMeters: number): [number, number][] {
+  const half = patchMeters / 2;
+  const latDelta = half / METERS_PER_DEG_LAT;
+  const lonScale = Math.max(Math.cos((lat * Math.PI) / 180), 1e-6);
+  const lonDelta = half / (METERS_PER_DEG_LAT * lonScale);
+
+  return [
+    [lng - lonDelta, lat + latDelta],
+    [lng + lonDelta, lat + latDelta],
+    [lng + lonDelta, lat - latDelta],
+    [lng - lonDelta, lat - latDelta],
+  ];
+}
+
 export const LandingForm: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [viewState, setViewState] = useState(INITIAL_VIEW_STATE);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 1024);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 1024);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   React.useEffect(() => {
     if (location.state && location.state.highlightedId) {
@@ -31,21 +57,38 @@ export const LandingForm: React.FC = () => {
     }
   }, [location.state]);
 
-  // Custom Drawing State (Forcing 4-point Quadrilaterals/Trapezoids)
+  // Single-point targeting; we auto-build a Sentinel-sized square patch.
   const [drawingPoints, setDrawingPoints] = useState<[number, number][]>([]);
   const [currentSelection, setCurrentSelection] = useState<any>(null);
+  const [processingSelection, setProcessingSelection] = useState<any>(null);
 
   const [coastalGeoJson, setCoastalGeoJson] = useState<any>({ type: 'FeatureCollection', features: [] });
   const [searchHistory, setSearchHistory] = useState<any[]>([]);
-  const [hoverInfo, setHoverInfo] = useState<{ lng: number, lat: number, x: number, y: number } | null>(null);
+  const [hoverInfo, setHoverInfo] = useState<{ lng: number, lat: number, x: number, y: number, hasObject: boolean } | null>(null);
+
+  const processingBbox = React.useMemo(() => {
+    if (!processingSelection?.geometry?.coordinates?.[0]) return null;
+    const ring = processingSelection.geometry.coordinates[0].slice(0, 4) as [number, number][];
+    const lons = ring.map(([lon]) => lon);
+    const lats = ring.map(([, lat]) => lat);
+    return {
+      minLon: Math.min(...lons),
+      maxLon: Math.max(...lons),
+      minLat: Math.min(...lats),
+      maxLat: Math.max(...lats),
+    };
+  }, [processingSelection]);
 
   React.useEffect(() => {
-    api.trackerSearch().then(setSearchHistory).catch(err => {
-      console.error('tracker/search:', apiErrorMessage(err));
-    });
-    api.trackerCoastline().then(setCoastalGeoJson).catch(err => {
-      console.error('tracker/coastline:', apiErrorMessage(err));
-    });
+    // Fetch global history from the backend
+    api.trackerSearch().then((res) => {
+      setSearchHistory(res);
+    }).catch((err) => console.error('tracker/search:', apiErrorMessage(err)));
+
+    // Fetch dynamic coastline
+    api.trackerCoastline().then((res) => {
+      setCoastalGeoJson(res);
+    }).catch((err) => console.error('tracker/coastline:', apiErrorMessage(err)));
   }, []);
 
   const getDensityColor = (density: number): [number, number, number, number] => {
@@ -58,22 +101,13 @@ export const LandingForm: React.FC = () => {
     if (!info.coordinate) return;
     const [lng, lat] = info.coordinate;
 
-    setDrawingPoints(prev => {
-      // If we already have a box, a new click resets the drawing board
-      if (prev.length === 4) {
-        setCurrentSelection(null);
-        return [[lng, lat]];
-      }
-
-      const newPoints = [...prev, [lng, lat] as [number, number]];
-
-      if (newPoints.length === 4) {
-        // Build the valid GeoJSON polygon (closing the loop by repeating the first point)
-        const polygon = turf.polygon([[...newPoints, newPoints[0]]]);
-        setCurrentSelection(polygon);
-      }
-
-      return newPoints;
+    setDrawingPoints(() => {
+      const nextPoints: [number, number][] = [[lng, lat]];
+      const previewSquare = buildSentinelPatchSquare(lng, lat, VISUAL_PREVIEW_PATCH_SIZE_METERS);
+      const processingSquare = buildSentinelPatchSquare(lng, lat, SENTINEL2_PATCH_SIZE_METERS);
+      setCurrentSelection(turf.polygon([[...previewSquare, previewSquare[0]]]));
+      setProcessingSelection(turf.polygon([[...processingSquare, processingSquare[0]]]));
+      return nextPoints;
     });
   }, []);
 
@@ -140,98 +174,110 @@ export const LandingForm: React.FC = () => {
     }),
 
     // --- DRAWING STATE UI ---
-    // Draw the borders of the shape dynamically as the user clicks
+    // Draw the auto-generated Sentinel patch border.
     new PathLayer({
       id: 'drawing-border',
-      data: drawingPoints.length > 0 ? [{ path: currentSelection ? [...drawingPoints, drawingPoints[0]] : drawingPoints }] : [],
+      data: currentSelection ? [{ path: currentSelection.geometry.coordinates[0] }] : [],
       getPath: (d: any) => d.path,
       getColor: [16, 185, 129, 255],
       getWidth: 150,
       widthMinPixels: 2
     }),
 
-    // Draw the corner nodes as glowing dots
+    // Draw the selected center point as a glowing node.
     new ScatterplotLayer({
       id: 'drawing-nodes',
       data: drawingPoints.map(p => ({ position: p })),
       getPosition: (d: any) => d.position,
       getFillColor: [16, 185, 129, 255],
-      getRadius: 300,
-      radiusMinPixels: 5
+      getRadius: 500,
+      radiusMinPixels: 7
     }),
 
-    // Fill the polygon once closed
+    // Fill the generated patch polygon.
     currentSelection && new PolygonLayer({
       id: 'drawing-fill',
-      data: [{ contour: [...drawingPoints, drawingPoints[0]] }],
-      getPolygon: (d: any) => d.contour,
+      data: [currentSelection],
+      getPolygon: (d: any) => d.geometry.coordinates[0],
       getFillColor: [16, 185, 129, 50],
       filled: true
     })
   ].filter(Boolean);
 
   const handleSubmit = async () => {
-    if (!currentSelection) return;
-    try {
-      await api.trackerSubmit(drawingPoints as Array<[number, number]>);
+    if (processingSelection && drawingPoints.length === 1) {
+      try {
+        const patchCoordinates = processingSelection.geometry.coordinates[0].slice(0, 4);
+        const record = await api.trackerSubmit(patchCoordinates as Array<[number, number]>);
 
-      // Refresh history + coastline so the new sector + coastal intensity
-      // appear before we hand off to the ops dashboard.
-      const [hist, coast] = await Promise.all([
-        api.trackerSearch(),
-        api.trackerCoastline(),
-      ]);
-      setSearchHistory(hist);
-      setCoastalGeoJson(coast);
+        // Fetch globally updated search history instead of local hack
+        const [histRes, coastRes] = await Promise.all([
+          api.trackerSearch(),
+          api.trackerCoastline(),
+        ]);
+        setSearchHistory(histRes);
+        setCoastalGeoJson(coastRes);
 
-      const center = turf.centerOfMass(currentSelection).geometry.coordinates;
-      const customAoiId = `custom_${center[0].toFixed(4)}_${center[1].toFixed(4)}`;
+        // Reset local selection drawing state so we can see the popups
+        setDrawingPoints([]);
+        setCurrentSelection(null);
+        setProcessingSelection(null);
 
-      setDrawingPoints([]);
-      setCurrentSelection(null);
-
-      // Route into the Ops Dashboard for the sector we just deployed.
-      navigate(`/drift/aoi/${customAoiId}`);
-    } catch (err) {
-      const msg = apiErrorMessage(err);
-      console.error('tracker submit:', msg);
-      alert(msg.includes('ocean') || msg.includes('land')
-        ? msg
-        : `Error deploying sector: ${msg}`);
-      setDrawingPoints([]);
-      setCurrentSelection(null);
+        const center = record.center ?? drawingPoints[0];
+        const customAoiId = `custom_${center[0].toFixed(4)}_${center[1].toFixed(4)}`;
+        navigate(`/drift/aoi/${customAoiId}`, { state: { highlightedId: record.id } });
+      } catch (err: any) {
+        console.error(err);
+        const msg = apiErrorMessage(err);
+        alert(msg.includes('ocean') || msg.includes('land')
+          ? msg
+          : 'Error deploying sector. Please try an oceanic location.');
+        setDrawingPoints([]);
+        setCurrentSelection(null);
+        setProcessingSelection(null);
+      }
     }
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'row', width: '100%', height: '100vh', backgroundColor: '#1e2229', fontFamily: 'Inter, sans-serif' }}>
-      
+    <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', width: '100%', minHeight: '100vh', backgroundColor: '#1e2229', fontFamily: 'Inter, sans-serif' }}>
+
       {/* Sidebar Panel */}
-      <div style={{ width: '400px', height: '100%', backgroundColor: '#272c35', borderRight: '1px solid #38404d', display: 'flex', flexDirection: 'column', zIndex: 10, boxShadow: '2px 0 10px rgba(0,0,0,0.2)' }}>
-        
+      <div style={{ width: isMobile ? '100%' : '400px', minHeight: isMobile ? 'auto' : '100%', backgroundColor: '#272c35', borderRight: isMobile ? 'none' : '1px solid #38404d', borderBottom: isMobile ? '1px solid #38404d' : 'none', display: 'flex', flexDirection: 'column', zIndex: 10, boxShadow: isMobile ? '0 2px 10px rgba(0,0,0,0.2)' : '2px 0 10px rgba(0,0,0,0.2)' }}>
+
         {/* Main Control Section */}
-        <div style={{ padding: '2rem', borderBottom: '1px solid #38404d' }}>
-          <h1 style={{ margin: '0 0 1rem 0', fontSize: '1.8rem', color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '2px' }}>DRIFT_OS v2.0</h1>
+        <div style={{ padding: isMobile ? '1rem' : '2rem', borderBottom: '1px solid #38404d' }}>
+          <h1 style={{ margin: '0 0 1rem 0', fontSize: isMobile ? '1.2rem' : '1.8rem', color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: isMobile ? '1px' : '2px' }}>D.R.I.F.T._OS v2.0</h1>
 
           <div style={{ marginBottom: '1.5rem', fontSize: '0.95rem', lineHeight: '1.6', color: '#94a3b8' }}>
             <strong style={{ color: '#f59e0b' }}>&gt; SECTOR DEPLOYMENT</strong><br />
-            Click 4 points onto the map surface to define a target trapezoid over the ocean.
+            Click 1 ocean point. D.R.I.F.T. previews 100m x 100m for visibility, but processes a 10m x 10m Sentinel-2 patch.
             <br /><br />
-            <strong>Points Logged:</strong> <span style={{color: '#e2e8f0', fontWeight: 'bold'}}>{drawingPoints.length}/4</span>
+            <strong>Points Logged:</strong> <span style={{ color: '#e2e8f0', fontWeight: 'bold' }}>{drawingPoints.length}/1</span>
           </div>
 
-          {drawingPoints.length === 4 && (
+          {drawingPoints.length === 1 && (
             <div style={{ padding: '1rem', background: 'rgba(16, 185, 129, 0.1)', borderLeft: '4px solid #10b981', marginBottom: '1.5rem', fontSize: '0.9rem', color: '#10b981' }}>
-              <span style={{ fontWeight: 'bold' }}>[ SECTOR LOCKED ]</span><br />
-              Coordinates captured. Ready for deployment.
+              <span style={{ fontWeight: 'bold' }}>[ PATCH LOCKED ]</span><br />
+              Center locked. 100m preview + 10m processing AOI generated.
+            </div>
+          )}
+
+          {processingBbox && (
+            <div style={{ padding: '0.8rem', background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '6px', marginBottom: '1.1rem', fontFamily: 'monospace', fontSize: isMobile ? '0.72rem' : '0.78rem', color: '#9ce7cc', lineHeight: '1.5', overflowX: 'auto' }}>
+              <div style={{ color: '#10b981', fontWeight: 700, marginBottom: '0.25rem' }}>PROCESSING BBOX (10m)</div>
+              <div>minLon: {processingBbox.minLon.toFixed(7)}</div>
+              <div>minLat: {processingBbox.minLat.toFixed(7)}</div>
+              <div>maxLon: {processingBbox.maxLon.toFixed(7)}</div>
+              <div>maxLat: {processingBbox.maxLat.toFixed(7)}</div>
             </div>
           )}
 
           <button
             onClick={handleSubmit}
-            disabled={drawingPoints.length !== 4}
-            style={{ width: '100%', padding: '1rem', background: drawingPoints.length === 4 ? '#10b981' : '#38404d', color: drawingPoints.length === 4 ? '#1e2229' : '#64748b', border: 'none', borderRadius: '6px', cursor: drawingPoints.length === 4 ? 'pointer' : 'not-allowed', fontWeight: 'bold', fontSize: '1rem', textTransform: 'uppercase', transition: 'all 0.3s ease', boxShadow: drawingPoints.length === 4 ? '0 4px 6px rgba(16, 185, 129, 0.2)' : 'none' }}>
-            {drawingPoints.length === 4 ? 'Initialize AWS Deep Scan' : 'Awaiting 4-Point Target...'}
+            disabled={drawingPoints.length !== 1}
+            style={{ width: '100%', padding: '1rem', background: drawingPoints.length === 1 ? '#10b981' : '#38404d', color: drawingPoints.length === 1 ? '#1e2229' : '#64748b', border: 'none', borderRadius: '6px', cursor: drawingPoints.length === 1 ? 'pointer' : 'not-allowed', fontWeight: 'bold', fontSize: '1rem', textTransform: 'uppercase', transition: 'all 0.3s ease', boxShadow: drawingPoints.length === 1 ? '0 4px 6px rgba(16, 185, 129, 0.2)' : 'none' }}>
+            {drawingPoints.length === 1 ? 'Initialize AWS Deep Scan' : 'Awaiting Ocean Point...'}
           </button>
 
           <button
@@ -242,35 +288,50 @@ export const LandingForm: React.FC = () => {
           >
             ACCESS DEPLOYMENT LOGS
           </button>
+
+          <button
+            onClick={() => navigate('/drift/dashboard')}
+            style={{ marginTop: '10px', width: '100%', background: '#1f7a5d', border: '1px solid #279a74', color: '#eaf8f3', padding: '10px', borderRadius: '4px', cursor: 'pointer', transition: 'background 0.3s ease', fontWeight: 'bold', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}
+            onMouseOver={(e) => e.currentTarget.style.background = '#24916d'}
+            onMouseOut={(e) => e.currentTarget.style.background = '#1f7a5d'}
+          >
+            OPEN INTEL DASHBOARD
+          </button>
         </div>
 
         {/* Threat Legend Section */}
-        <div style={{ padding: '2rem', flexGrow: 1 }}>
+        <div style={{ padding: isMobile ? '1rem' : '2rem', flexGrow: 1 }}>
           <h4 style={{ margin: '0 0 1rem 0', color: '#94a3b8', textTransform: 'uppercase', fontSize: '0.85rem', fontWeight: 'bold', letterSpacing: '1px' }}>Threat Legend & Analytics</h4>
-          
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', fontSize: '0.9rem', color: '#cbd5e1' }}>
-            <div style={{ width: '16px', height: '16px', background: '#f59e0b', borderRadius: '4px', boxShadow: '0 0 5px #f59e0b' }}></div> 
+            <div style={{ width: '16px', height: '16px', background: '#f59e0b', borderRadius: '4px', boxShadow: '0 0 5px #f59e0b' }}></div>
             <span>Critical Coastline Accumulation</span>
           </div>
-          
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', fontSize: '0.9rem', color: '#cbd5e1' }}>
-            <div style={{ width: '20px', height: '3px', background: 'linear-gradient(90deg, #10b981, #f59e0b)' }}></div> 
+            <div style={{ width: '20px', height: '3px', background: 'linear-gradient(90deg, #10b981, #f59e0b)' }}></div>
             <span>Flat Vector: Predictive Drift Path</span>
           </div>
         </div>
       </div>
 
       {/* Map Content Section */}
-      <div style={{ position: 'relative', flexGrow: 1, height: '100%' }}>
+      <div style={{ position: 'relative', flexGrow: 1, height: isMobile ? '62vh' : '100vh', minHeight: isMobile ? 420 : undefined }}>
         <DeckGL
           initialViewState={viewState}
-          onViewStateChange={({ viewState }) => setViewState(viewState as typeof INITIAL_VIEW_STATE)}
+          onViewStateChange={({ viewState: nextViewState }) => setViewState(nextViewState as typeof INITIAL_VIEW_STATE)}
           controller={true}
           layers={layers}
           onClick={handleMapClick}
           onHover={(info) => {
             if (info.coordinate) {
-              setHoverInfo({ lng: info.coordinate[0], lat: info.coordinate[1], x: info.x, y: info.y });
+              setHoverInfo({
+                lng: info.coordinate[0],
+                lat: info.coordinate[1],
+                x: info.x,
+                y: info.y,
+                hasObject: Boolean(info.object)
+              });
             } else {
               setHoverInfo(null);
             }
@@ -308,7 +369,7 @@ export const LandingForm: React.FC = () => {
           <Map mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" />
         </DeckGL>
 
-        {hoverInfo && (
+        {hoverInfo && !hoverInfo.hasObject && (
           <div style={{
             position: 'absolute',
             left: hoverInfo.x + 15,

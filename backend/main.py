@@ -8,8 +8,18 @@ OR:
 
     python -m backend.main
 """
+from pathlib import Path
+import sys
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+# Allow `uvicorn main:app` when launched from the `backend` directory.
+if __package__ in (None, ""):
+    repo_root = Path(__file__).resolve().parent.parent
+    repo_root_str = str(repo_root)
+    if repo_root_str not in sys.path:
+        sys.path.insert(0, repo_root_str)
 
 from backend.api.routes import router
 from backend.api.tracker_routes import router as tracker_router

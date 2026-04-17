@@ -2,21 +2,25 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { motion } from 'framer-motion';
+import { motion, type Variants } from 'framer-motion';
 import Lenis from 'lenis';
+import { Map, Satellite, Ship, Waves, type LucideIcon } from 'lucide-react';
 
 gsap.registerPlugin(ScrollTrigger);
 
 const TOTAL_FRAMES = 40;
 
 // Stagger helper for child animations
-const staggerContainer = {
+const staggerContainer: Variants = {
   hidden: {},
   visible: { transition: { staggerChildren: 0.15 } },
 };
-const fadeUp = {
+
+const smoothEase: [number, number, number, number] = [0.16, 1, 0.3, 1];
+
+const fadeUp: Variants = {
   hidden: { opacity: 0, y: 30 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] as [number, number, number, number] } },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: smoothEase } },
 };
 
 export const NewLandingPage: React.FC = () => {
@@ -39,12 +43,19 @@ export const NewLandingPage: React.FC = () => {
       wheelMultiplier: 0.8,
       touchMultiplier: 2,
     });
-    function raf(time: number) {
-      lenis.raf(time);
-      requestAnimationFrame(raf);
-    }
-    requestAnimationFrame(raf);
-    return () => lenis.destroy();
+
+    // Keep Lenis and ScrollTrigger in the same clock to avoid jitter/stalls.
+    lenis.on('scroll', ScrollTrigger.update);
+    const update = (time: number) => {
+      lenis.raf(time * 1000);
+    };
+    gsap.ticker.add(update);
+    gsap.ticker.lagSmoothing(0);
+
+    return () => {
+      gsap.ticker.remove(update);
+      lenis.destroy();
+    };
   }, []);
 
   // Preload image sequence
@@ -76,17 +87,28 @@ export const NewLandingPage: React.FC = () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const render = (index: number) => {
-      const img = images[index];
-      if (!img || !img.complete) return;
+    let cw = 0;
+    let ch = 0;
+    let rafId: number | null = null;
+    let queuedFrame = 0;
+
+    const setCanvasSize = () => {
       const dpr = window.devicePixelRatio || 1;
       const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      ctx.scale(dpr, dpr);
+      cw = rect.width;
+      ch = rect.height;
+      canvas.width = Math.round(cw * dpr);
+      canvas.height = Math.round(ch * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      const cw = rect.width, ch = rect.height, iw = img.width, ih = img.height;
+    };
+
+    const render = (index: number) => {
+      const img = images[index];
+      if (!img || !img.complete || cw === 0 || ch === 0) return;
+      const iw = img.width;
+      const ih = img.height;
       const scale = Math.max(cw / iw, ch / ih);
       const nw = iw * scale, nh = ih * scale;
       const ox = (cw - nw) / 2, oy = (ch - nh) / 2;
@@ -94,8 +116,22 @@ export const NewLandingPage: React.FC = () => {
       ctx.drawImage(img, ox, oy, nw, nh);
     };
 
-    render(0);
-    const updateCanvasSize = () => render(Math.round(obj.frame));
+    const queueRender = (index: number) => {
+      queuedFrame = index;
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        render(queuedFrame);
+        rafId = null;
+      });
+    };
+
+    setCanvasSize();
+
+    queueRender(0);
+    const updateCanvasSize = () => {
+      setCanvasSize();
+      queueRender(Math.round(obj.frame));
+    };
     window.addEventListener('resize', updateCanvasSize);
 
     const obj = { frame: 0 };
@@ -109,48 +145,54 @@ export const NewLandingPage: React.FC = () => {
         end: '+=600%',
         scrub: 1,
         pin: true,
-        onUpdate: () => render(Math.round(obj.frame)),
+        onUpdate: () => queueRender(Math.round(obj.frame)),
       },
     });
 
-    return () => { window.removeEventListener('resize', updateCanvasSize); st.kill(); };
+    return () => {
+      window.removeEventListener('resize', updateCanvasSize);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+      st.kill();
+    };
   }, [imagesLoaded, images]);
 
   /* ──────────────────────── DATA ──────────────────────── */
 
   const features = [
     {
-      icon: '🛰️',
+      icon: Satellite,
       title: 'Satellite-Powered Detection',
       desc: 'Queries the AWS Earth Search STAC API for Sentinel-2 L2A multi-spectral imagery (NIR, Red, SWIR bands) to identify sub-pixel macroplastic concentrations invisible to the naked eye.',
     },
     {
-      icon: '🌊',
+      icon: Waves,
       title: 'Lagrangian Drift Forecasting',
       desc: 'Predicts where detected debris will travel over 24h, 48h, and 72h windows using CMEMS ocean current vectors and ERA5 wind data fused through Euler-step particle tracking.',
     },
     {
-      icon: '🗺️',
+      icon: Map,
       title: 'Interactive AOI Mapping',
       desc: 'Click 4 points on a dark-matter basemap to define a target ocean sector. A 100×100 grid land-check ensures your polygon is strictly over water before analysis begins.',
     },
     {
-      icon: '🚢',
+      icon: Ship,
       title: 'Cleanup Mission Planner',
       desc: 'Generates optimal Coast Guard vessel routes using TSP heuristics over high-density hotspots, and exports the route as a downloadable GPX file for direct nav-system integration.',
     },
-  ];
+  ] as Array<{ icon: LucideIcon; title: string; desc: string }>;
 
   const steps = [
     {
       step: '01',
       title: 'Define Your Sector',
-      desc: 'Open the DRIFT Map and click 4 points on the ocean to draw a target polygon. The system validates that no land is enclosed — if it is, you\'ll be prompted to redraw.',
+      desc: 'Open the D.R.I.F.T. Map and click 4 points on the ocean to draw a target polygon. The system validates that no land is enclosed — if it is, you\'ll be prompted to redraw.',
     },
     {
       step: '02',
       title: 'Analyze & Detect',
-      desc: 'Hit "Initialize AWS Deep Scan" and DRIFT fetches the latest Sentinel-2 satellite tile, runs AI-based sub-pixel detection, and overlays plastic density zones in real-time.',
+      desc: 'Hit "Initialize AWS Deep Scan" and D.R.I.F.T. fetches the latest Sentinel-2 satellite tile, runs AI-based sub-pixel detection, and overlays plastic density zones in real-time.',
     },
     {
       step: '03',
@@ -196,19 +238,21 @@ export const NewLandingPage: React.FC = () => {
       <div ref={sequenceRef} className="relative w-full h-screen overflow-hidden bg-primary-navy">
         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full object-cover" />
 
+        <div className="absolute inset-0 bg-black/35 z-10" />
+
         <div className="absolute inset-0 bg-gradient-to-t from-primary-navy/80 via-transparent to-transparent z-10" />
 
-        <div className="absolute top-12 left-8 md:top-16 md:left-16 z-20 pointer-events-none">
-          <h1 className="text-6xl md:text-[9rem] font-syne font-bold tracking-tight text-white leading-none drop-shadow-md">
+        <div className="absolute top-10 left-4 md:top-16 md:left-16 z-20 pointer-events-none max-w-[92vw]">
+          <h1 className="type-display-hero font-syne font-bold tracking-tight text-white leading-none drop-shadow-md">
             D.R.I.F.T.
           </h1>
-          <p className="text-sm md:text-lg font-inter tracking-[0.2em] mt-4 text-white/90 font-medium drop-shadow-sm">
+          <p className="text-[11px] sm:text-sm md:text-lg font-inter tracking-[0.12em] sm:tracking-[0.2em] mt-3 md:mt-4 text-white/90 font-medium drop-shadow-sm">
             Debris Recognition, Imaging & Forecast Trajectory
           </p>
         </div>
 
-        <div className="absolute bottom-28 left-8 md:left-16 z-20 pointer-events-none max-w-xl">
-          <p className="text-base md:text-xl font-inter font-light leading-relaxed text-white/80 drop-shadow-sm">
+        <div className="absolute bottom-24 left-4 right-4 md:left-16 md:right-auto z-20 pointer-events-none max-w-xl">
+          <p className="text-sm sm:text-base md:text-xl font-inter font-light leading-relaxed text-white/85 drop-shadow-sm">
             An AI-powered ocean surveillance platform that detects marine plastic debris from satellite imagery, forecasts its drift path, and plans optimal cleanup missions.
           </p>
         </div>
@@ -232,18 +276,18 @@ export const NewLandingPage: React.FC = () => {
             initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.3 }}
-            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] as [number, number, number, number] }}
+            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
           >
             <p className="text-xs font-inter uppercase tracking-[0.3em] text-accent-amber mb-6">The Problem</p>
             <h2 className="text-4xl md:text-7xl font-syne font-normal tracking-tight mb-10">
-              8 million tons of plastic <span className="text-accent-amber italic">enter</span> our oceans<br/>every single year.
+              8 million tons of plastic <span className="text-accent-amber italic">enter</span> our oceans<br />every single year.
             </h2>
             <div className="grid md:grid-cols-2 gap-16 text-lg md:text-xl font-inter font-light leading-relaxed text-text-main/70">
               <p>
                 In satellite imagery, a single pixel at 10-meter resolution covers enormous areas. Macroplastics often occupy less than 20% of a pixel, rendering them invisible to standard classification. Existing monitoring relies on ship surveys and beach cleanups — reactive approaches that miss 99% of floating debris.
               </p>
               <p>
-                DRIFT changes this paradigm. By fusing multi-spectral satellite bands with AI-driven sub-pixel analysis, we detect plastic patches from space, predict where ocean currents will carry them, and generate actionable deployment plans — all before debris reaches the coastline.
+                D.R.I.F.T. changes this paradigm. By fusing multi-spectral satellite bands with AI-driven sub-pixel analysis, we detect plastic patches from space, predict where ocean currents will carry them, and generate actionable deployment plans — all before debris reaches the coastline.
               </p>
             </div>
           </motion.div>
@@ -279,17 +323,67 @@ export const NewLandingPage: React.FC = () => {
           </motion.div>
         </section>
 
+        {/* ── FINAL CTA ── */}
+        <section className="flex flex-col justify-center items-center text-center max-w-3xl mx-auto px-4 md:px-6 mb-28 md:mb-40">
+          <motion.div
+            initial={{ opacity: 0, y: 40 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.5 }}
+            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <h2 className="type-display-lg font-syne font-medium tracking-tight mb-6">
+              Ready to scan the ocean?
+            </h2>
+            <p className="type-body-lg font-inter font-light leading-relaxed mb-10 md:mb-12 text-text-main/60">
+              Define a target sector, detect floating debris, trace its future path, and plan a Coast Guard mission — all from your browser.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-3 md:gap-4 justify-center w-full sm:w-auto">
+              <motion.button
+                onClick={() => navigate('/drift')}
+                className="group relative inline-flex items-center justify-center w-full sm:w-auto px-8 md:px-12 py-4 md:py-5 font-inter font-medium text-sm bg-accent-cyan text-primary-navy rounded-full transition-all duration-500 overflow-hidden"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <div className="absolute inset-0 w-full h-full bg-accent-amber translate-y-full group-hover:translate-y-0 transition-transform duration-500 ease-[0.16,1,0.3,1]" />
+                <span className="relative z-10 flex items-center gap-3">
+                  Launch D.R.I.F.T. Map
+                  <motion.span className="inline-block transition-transform duration-300 group-hover:translate-x-1">→</motion.span>
+                </span>
+              </motion.button>
+
+              <motion.button
+                onClick={() => navigate('/drift/history')}
+                className="inline-flex items-center justify-center w-full sm:w-auto px-8 md:px-12 py-4 md:py-5 font-inter font-medium text-sm border border-white/10 text-text-main/70 rounded-full hover:border-accent-amber/40 hover:text-accent-amber transition-all duration-300"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                View Search History
+              </motion.button>
+
+              <motion.button
+                onClick={() => navigate('/drift/dashboard')}
+                className="inline-flex items-center justify-center w-full sm:w-auto px-8 md:px-12 py-4 md:py-5 font-inter font-medium text-sm border border-accent-cyan/40 text-accent-cyan rounded-full hover:bg-accent-cyan/10 transition-all duration-300"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                Open Intel Dashboard
+              </motion.button>
+            </div>
+          </motion.div>
+        </section>
+
         {/* ── SECTION 2: PLATFORM FEATURES ── */}
         <section className="max-w-5xl mx-auto px-6 mb-40">
           <motion.div
             initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.3 }}
-            transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] as [number, number, number, number] }}
+            transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
           >
             <p className="text-xs font-inter uppercase tracking-[0.3em] text-accent-cyan mb-6">Core Capabilities</p>
             <h2 className="text-4xl md:text-6xl font-syne font-medium tracking-tight mb-16">
-              What DRIFT <span className="text-white/40">does.</span>
+              What D.R.I.F.T. <span className="text-white/40">does.</span>
             </h2>
           </motion.div>
 
@@ -306,7 +400,9 @@ export const NewLandingPage: React.FC = () => {
                 variants={fadeUp}
                 className="group bg-stone rounded-2xl p-8 border border-white/5 hover:border-accent-cyan/30 transition-colors duration-500"
               >
-                <div className="text-4xl mb-5">{f.icon}</div>
+                <div className="mb-5">
+                  <f.icon className="h-10 w-10 text-accent-cyan" strokeWidth={1.8} />
+                </div>
                 <h3 className="text-xl font-syne font-medium mb-3 text-text-main group-hover:text-accent-amber transition-colors duration-300">{f.title}</h3>
                 <p className="text-sm font-inter font-light leading-relaxed text-text-main/60">{f.desc}</p>
               </motion.div>
@@ -320,7 +416,7 @@ export const NewLandingPage: React.FC = () => {
             initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.3 }}
-            transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] as [number, number, number, number] }}
+            transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
           >
             <p className="text-xs font-inter uppercase tracking-[0.3em] text-accent-cyan mb-6">Workflow</p>
             <h2 className="text-4xl md:text-6xl font-syne font-medium tracking-tight mb-16">
@@ -358,7 +454,7 @@ export const NewLandingPage: React.FC = () => {
             initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.3 }}
-            transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] as [number, number, number, number] }}
+            transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
           >
             <p className="text-xs font-inter uppercase tracking-[0.3em] text-accent-cyan mb-6">Under the Hood</p>
             <h2 className="text-4xl md:text-6xl font-syne font-medium tracking-tight mb-16">
@@ -392,7 +488,7 @@ export const NewLandingPage: React.FC = () => {
             initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.3 }}
-            transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] as [number, number, number, number] }}
+            transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
           >
             <p className="text-xs font-inter uppercase tracking-[0.3em] text-accent-cyan mb-6">System Design</p>
             <h2 className="text-4xl md:text-5xl font-syne font-medium tracking-tight mb-12">
@@ -405,7 +501,7 @@ export const NewLandingPage: React.FC = () => {
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.2 }}
-            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] as [number, number, number, number] }}
+            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
           >
             <div className="grid md:grid-cols-3 gap-8">
               {[
@@ -440,47 +536,6 @@ export const NewLandingPage: React.FC = () => {
                   </ul>
                 </div>
               ))}
-            </div>
-          </motion.div>
-        </section>
-
-        {/* ── FINAL CTA ── */}
-        <section className="flex flex-col justify-center items-center text-center max-w-3xl mx-auto px-6 mb-24">
-          <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, amount: 0.5 }}
-            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] as [number, number, number, number] }}
-          >
-            <h2 className="text-4xl md:text-6xl font-syne font-medium tracking-tight mb-6">
-              Ready to scan the ocean?
-            </h2>
-            <p className="text-lg md:text-xl font-inter font-light leading-relaxed mb-12 text-text-main/60">
-              Define a target sector, detect floating debris, trace its future path, and plan a Coast Guard mission — all from your browser.
-            </p>
-
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <motion.button
-                onClick={() => navigate('/drift')}
-                className="group relative inline-flex items-center justify-center px-12 py-5 font-inter font-medium text-sm bg-accent-cyan text-primary-navy rounded-full transition-all duration-500 overflow-hidden"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                <div className="absolute inset-0 w-full h-full bg-accent-amber translate-y-full group-hover:translate-y-0 transition-transform duration-500 ease-[0.16,1,0.3,1]" />
-                <span className="relative z-10 flex items-center gap-3">
-                  Launch DRIFT Map
-                  <motion.span className="inline-block transition-transform duration-300 group-hover:translate-x-1">→</motion.span>
-                </span>
-              </motion.button>
-
-              <motion.button
-                onClick={() => navigate('/drift/history')}
-                className="inline-flex items-center justify-center px-12 py-5 font-inter font-medium text-sm border border-white/10 text-text-main/70 rounded-full hover:border-accent-amber/40 hover:text-accent-amber transition-all duration-300"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                View Search History
-              </motion.button>
             </div>
           </motion.div>
         </section>

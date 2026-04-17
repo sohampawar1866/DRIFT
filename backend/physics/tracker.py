@@ -72,7 +72,7 @@ def _step_particle(
     new_alive = alive.copy()
     if not alive.any():
         return new_p, new_alive
-    lons, lats = to_wgs.transform(p_utm[:, 0], p_utm[:, 1])
+    lons, lats = to_wgs.transform(p_utm[:, 0].tolist(), p_utm[:, 1].tolist())
     for i in range(p_utm.shape[0]):
         if not alive[i]:
             continue
@@ -106,7 +106,7 @@ def _build_frame(
 ) -> ForecastFrame:
     wgs_positions: list[tuple[float, float]] = []
     for (pts, _alive, _zone), to_wgs in zip(per_det_state, to_wgs_list):
-        lons, lats = to_wgs.transform(pts[:, 0], pts[:, 1])
+        lons, lats = to_wgs.transform(pts[:, 0].tolist(), pts[:, 1].tolist())
         for lon, lat in zip(lons, lats):
             wgs_positions.append((float(lon), float(lat)))
 

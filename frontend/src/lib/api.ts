@@ -1,14 +1,3 @@
-/**
- * Central API client for DRIFT frontend.
- *
- * Single source of truth for:
- *   - The backend base URL (env var VITE_API_BASE_URL, defaulting to localhost:8000)
- *   - Every endpoint call (typed request + response)
- *   - Axios instance with a single timeout + error pattern
- *
- * Components import named functions (e.g. `api.detect(aoi_id)`) instead of
- * calling `axios.get(...)` directly.  A URL change touches only this file.
- */
 import axios, { AxiosError } from 'axios';
 
 export const API_BASE_URL: string =
@@ -20,8 +9,6 @@ const client = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-/** Stable error message regardless of whether the error is a network
- *  failure, timeout, or structured backend {detail} response. */
 export function apiErrorMessage(err: unknown): string {
   if (axios.isAxiosError(err)) {
     const ax = err as AxiosError<{ detail?: string; error?: string }>;
@@ -33,47 +20,38 @@ export function apiErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Unknown error';
 }
 
-// ---------------------------------------------------------------- types
-// Adapter shapes returned by the backend service layer. Extra/optional
-// fields are tolerated (pydantic does not reach the API surface here).
+export type ForecastHours = 24 | 48 | 72;
+export type ExportFormat = 'gpx' | 'geojson' | 'pdf';
 
 export interface AoiEntry {
   id: string;
   name?: string;
-  center: [number, number];           // [lon, lat]
+  center: [number, number];
   bounds?: [[number, number], [number, number]];
 }
-export interface AoiListResponse { aois: AoiEntry[] }
 
-export interface DetectionProps {
-  id: string;
-  confidence: number;
-  area_sq_meters: number;
-  age_days: number;
-  type: string;                        // always "macroplastic" today
-  fraction_plastic?: number;
-}
-export interface DetectionFeature {
-  type: 'Feature';
-  geometry: GeoJSON.Polygon;
-  properties: DetectionProps;
-}
-export interface DetectionFC {
-  type: 'FeatureCollection';
-  features: DetectionFeature[];
+export interface AoiListResponse {
+  aois: AoiEntry[];
 }
 
-export interface ForecastFC extends GeoJSON.FeatureCollection {
-  // Features carry `properties.forecast_hour` and `properties.type` in
-  // {'density_contour', 'particle'}; we keep them as generic GeoJSON
-  // so deck.gl can render directly.
+export interface DetectionFC extends GeoJSON.FeatureCollection {
+  features: Array<GeoJSON.Feature<GeoJSON.Polygon, {
+    id?: string;
+    confidence?: number;
+    area_sq_meters?: number;
+    age_days?: number;
+    type?: string;
+    fraction_plastic?: number;
+  }>>;
 }
+
+export interface ForecastFC extends GeoJSON.FeatureCollection {}
 
 export interface MissionFC extends GeoJSON.FeatureCollection {
   features: Array<GeoJSON.Feature<GeoJSON.LineString, {
-    mission_id: string;
-    estimated_vessel_time_hours: number;
-    priority: string;
+    mission_id?: string;
+    estimated_vessel_time_hours?: number;
+    priority?: string;
     total_distance_km?: number;
     waypoint_count?: number;
     waypoints?: Array<{
@@ -105,30 +83,19 @@ export interface SearchRecord {
   driftVector: [number, number];
 }
 
-export type ExportFormat = 'gpx' | 'geojson' | 'pdf';
-export type ForecastHours = 24 | 48 | 72;
-
-// ---------------------------------------------------------------- v1 API
-
 export async function listAois(): Promise<AoiListResponse> {
   const res = await client.get<AoiListResponse>('/api/v1/aois');
   return res.data;
 }
 
-export async function detect(
-  aoi_id: string,
-  s2_tile_path?: string,
-): Promise<DetectionFC> {
+export async function detect(aoi_id: string): Promise<DetectionFC> {
   const res = await client.get<DetectionFC>('/api/v1/detect', {
-    params: { aoi_id, s2_tile_path },
+    params: { aoi_id },
   });
   return res.data;
 }
 
-export async function forecast(
-  aoi_id: string,
-  hours: ForecastHours,
-): Promise<ForecastFC> {
+export async function forecast(aoi_id: string, hours: ForecastHours): Promise<ForecastFC> {
   const res = await client.get<ForecastFC>('/api/v1/forecast', {
     params: { aoi_id, hours },
   });
@@ -136,7 +103,9 @@ export async function forecast(
 }
 
 export async function mission(aoi_id: string): Promise<MissionFC> {
-  const res = await client.get<MissionFC>('/api/v1/mission', { params: { aoi_id } });
+  const res = await client.get<MissionFC>('/api/v1/mission', {
+    params: { aoi_id },
+  });
   return res.data;
 }
 
@@ -147,7 +116,6 @@ export async function dashboardMetrics(aoi_id: string): Promise<DashboardMetrics
   return res.data;
 }
 
-/** Build the absolute export URL so callers can `window.open` or embed as <a href>. */
 export function exportUrl(aoi_id: string, format: ExportFormat): string {
   const u = new URL('/api/v1/mission/export', API_BASE_URL);
   u.searchParams.set('aoi_id', aoi_id);
@@ -155,8 +123,6 @@ export function exportUrl(aoi_id: string, format: ExportFormat): string {
   return u.toString();
 }
 
-/** Snap an arbitrary slider value to the nearest legal backend horizon.
- *  Frontend sliders can stay continuous; backend only accepts {24,48,72}. */
 export function snapForecastHours(h: number): ForecastHours {
   const legal: ForecastHours[] = [24, 48, 72];
   return legal.reduce<ForecastHours>(
@@ -164,8 +130,6 @@ export function snapForecastHours(h: number): ForecastHours {
     24,
   );
 }
-
-// ---------------------------------------------------------------- tracker
 
 export async function trackerCoastline(): Promise<GeoJSON.FeatureCollection> {
   const res = await client.get<GeoJSON.FeatureCollection>('/api/v1/tracker/coastline');
@@ -177,9 +141,7 @@ export async function trackerSearch(): Promise<SearchRecord[]> {
   return res.data;
 }
 
-export async function trackerSubmit(
-  coordinates: Array<[number, number]>,
-): Promise<SearchRecord> {
+export async function trackerSubmit(coordinates: Array<[number, number]>): Promise<SearchRecord> {
   const res = await client.post<SearchRecord>('/api/v1/tracker/search', { coordinates });
   return res.data;
 }
@@ -189,7 +151,11 @@ export async function trackerRevisit(id: string): Promise<SearchRecord> {
   return res.data;
 }
 
-// Namespaced default export for readable call sites: `api.detect(id)`.
+export async function trackerClearHistory(): Promise<{ status: string; cleared: number; remaining: number }> {
+  const res = await client.delete<{ status: string; cleared: number; remaining: number }>('/api/v1/tracker/search');
+  return res.data;
+}
+
 const api = {
   API_BASE_URL,
   apiErrorMessage,
@@ -204,5 +170,7 @@ const api = {
   trackerSearch,
   trackerSubmit,
   trackerRevisit,
+  trackerClearHistory,
 };
+
 export default api;

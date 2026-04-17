@@ -20,35 +20,45 @@ body {
   font-family: var(--font-inter);
   background-color: var(--color-primary-navy);
   color: var(--color-text-main);
+  font-size: var(--type-body-md);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Beautiful Glowing Animation for Drift Vector Paths */
-.animated-drift-path {
-  stroke-dasharray: 8 12;
-  animation: drift-flow 2s linear infinite;
-  filter: drop-shadow(0 0 4px currentColor);
+:root {
+  --type-display-hero: clamp(2.8rem, 10vw, 9rem);
+  --type-display-lg: clamp(2.1rem, 7vw, 4.5rem);
+  --type-page-title: clamp(1.15rem, 3.2vw, 1.65rem);
+  --type-section-title: clamp(1.3rem, 4vw, 2.15rem);
+  --type-body-lg: clamp(1rem, 2.4vw, 1.2rem);
+  --type-body-md: clamp(0.9rem, 1.8vw, 1rem);
+  --type-caption: clamp(0.72rem, 1.7vw, 0.8rem);
 }
 
-@keyframes drift-flow {
-  from {
-    stroke-dashoffset: 20;
-  }
-  to {
-    stroke-dashoffset: 0;
-  }
+.type-display-hero {
+  font-size: var(--type-display-hero);
 }
 
-.coastal-intensity-glow {
-  filter: drop-shadow(0 0 6px currentColor);
+.type-display-lg {
+  font-size: var(--type-display-lg);
 }
 
-/* Hide scrollbar for the image sequence container */
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
+.type-page-title {
+  font-size: var(--type-page-title);
 }
-.no-scrollbar {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+
+.type-section-title {
+  font-size: var(--type-section-title);
+}
+
+.type-body-lg {
+  font-size: var(--type-body-lg);
+}
+
+.type-body-md {
+  font-size: var(--type-body-md);
+}
+
+.type-caption {
+  font-size: var(--type-caption);
 }

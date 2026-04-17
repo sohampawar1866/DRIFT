@@ -36,7 +36,7 @@ def _build_currents(
     vo_standard: str = "northward_sea_water_velocity",
     nan_cell: tuple[int, int] | None = None,  # (lat_idx, lon_idx)
 ) -> xr.Dataset:
-    t = pd.date_range("2026-04-17", periods=n_hours, freq="h")
+    t = pd.date_range("2026-04-17", periods=n_hours, freq="h").to_numpy(dtype="datetime64[ns]")
     shape = (n_hours, len(lat_vals), len(lon_vals))
     uo = np.full(shape, uo_const, dtype=np.float32)
     vo = np.full(shape, vo_const, dtype=np.float32)
@@ -66,7 +66,7 @@ def _build_winds(
     v10_standard: str = "northward_wind",
     u10_long: str = "10 metre eastward wind component",
 ) -> xr.Dataset:
-    t = pd.date_range("2026-04-17", periods=n_hours, freq="h")
+    t = pd.date_range("2026-04-17", periods=n_hours, freq="h").to_numpy(dtype="datetime64[ns]")
     shape = (n_hours, len(lat_vals), len(lon_vals))
     u10 = np.full(shape, u10_const, dtype=np.float32)
     v10 = np.full(shape, v10_const, dtype=np.float32)

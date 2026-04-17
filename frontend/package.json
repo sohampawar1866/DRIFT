@@ -13,7 +13,6 @@
     "@deck.gl/geo-layers": "^9.3.0",
     "@deck.gl/layers": "^9.3.0",
     "@deck.gl/react": "^9.3.0",
-    "@studio-freight/lenis": "^1.0.42",
     "@turf/turf": "^7.3.4",
     "axios": "^1.15.0",
     "deck.gl": "^9.3.0",

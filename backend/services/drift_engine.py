@@ -27,20 +27,46 @@ from typing import Any
 import numpy as np
 
 from backend.services.mock_data import get_mock_forecast_geojson
+from backend.services.runtime_flags import strict_mode_enabled
 
 logger = logging.getLogger(__name__)
 
-# Global coverage: MARIDA tiles span globally (Caribbean, Pacific, etc.), so
-# the synthetic env must too — otherwise particles at MARIDA-native UTM
-# locations fall outside our bbox and beach-on-NaN immediately.
 _SYNTH_LON_MIN, _SYNTH_LON_MAX = -180.0, 180.0
 _SYNTH_LAT_MIN, _SYNTH_LAT_MAX = -60.0, 60.0
 _SYNTH_GRID_STEP = 2.0     # degrees — coarse grid keeps env dataset small
+_SYNTH_GRID_STEP_MIN = 0.25
 _SYNTH_U_CURRENT = 0.15    # m/s eastward (gentle monsoon-scale drift)
 _SYNTH_V_CURRENT = -0.05   # m/s northward (slight southward component)
 
 
-def _build_synthetic_env(horizon_hours: int):
+def _iter_coords(node):
+    if not isinstance(node, (list, tuple)):
+        return
+    if len(node) >= 2 and all(isinstance(v, (int, float)) for v in node[:2]):
+        yield float(node[0]), float(node[1])
+        return
+    for child in node:
+        yield from _iter_coords(child)
+
+
+def _api_detection_bounds(api_fc: dict[str, Any]) -> tuple[float, float, float, float] | None:
+    min_lon = min_lat = float("inf")
+    max_lon = max_lat = float("-inf")
+
+    for feat in api_fc.get("features", []):
+        geom = feat.get("geometry", {})
+        for lon, lat in _iter_coords(geom.get("coordinates", [])):
+            min_lon = min(min_lon, lon)
+            max_lon = max(max_lon, lon)
+            min_lat = min(min_lat, lat)
+            max_lat = max(max_lat, lat)
+
+    if min_lon == float("inf"):
+        return None
+    return (min_lon, min_lat, max_lon, max_lat)
+
+
+def _build_synthetic_env(horizon_hours: int, bbox: tuple[float, float, float, float] | None = None):
     """Construct a minimal EnvStack with uniform weak currents + zero wind.
 
     Only used when real CMEMS/ERA5 NetCDFs are not pre-staged on disk.
@@ -53,8 +79,29 @@ def _build_synthetic_env(horizon_hours: int):
 
     from backend.physics.env_data import from_synthetic
 
-    lons = np.arange(_SYNTH_LON_MIN, _SYNTH_LON_MAX + _SYNTH_GRID_STEP, _SYNTH_GRID_STEP)
-    lats = np.arange(_SYNTH_LAT_MIN, _SYNTH_LAT_MAX + _SYNTH_GRID_STEP, _SYNTH_GRID_STEP)
+    if bbox is None:
+        lon_min, lat_min, lon_max, lat_max = (
+            _SYNTH_LON_MIN,
+            _SYNTH_LAT_MIN,
+            _SYNTH_LON_MAX,
+            _SYNTH_LAT_MAX,
+        )
+        step = _SYNTH_GRID_STEP
+    else:
+        min_lon, min_lat, max_lon, max_lat = bbox
+        margin = 2.0
+        lon_min = max(_SYNTH_LON_MIN, min_lon - margin)
+        lon_max = min(_SYNTH_LON_MAX, max_lon + margin)
+        lat_min = max(_SYNTH_LAT_MIN, min_lat - margin)
+        lat_max = min(_SYNTH_LAT_MAX, max_lat + margin)
+
+        lon_span = max(0.5, lon_max - lon_min)
+        lat_span = max(0.5, lat_max - lat_min)
+        # Keep synthetic env light for API latency while preserving interpolation stability.
+        step = max(_SYNTH_GRID_STEP_MIN, max(lon_span / 48.0, lat_span / 48.0))
+
+    lons = np.arange(lon_min, lon_max + step, step)
+    lats = np.arange(lat_min, lat_max + step, step)
     hours = np.arange(horizon_hours + 2)  # +2 buffer for interpolation at t=horizon
     times = np.datetime64("2024-01-01T00:00:00", "ns") + (hours * np.timedelta64(3600, "s"))
 
@@ -182,13 +229,19 @@ def simulate_drift(
 ) -> dict[str, Any]:
     """Forecast plastic drift over `forecast_hours` given detected polygons.
 
-    Never raises. Falls back to mock forecast on any failure (CONTEXT D-12).
+    Falls back to mock forecast on failures unless strict mode is enabled.
     """
+    strict = strict_mode_enabled()
+
     if os.environ.get("DRIFT_FORCE_MOCK", "").strip() == "1":
         logger.info("drift_engine: DRIFT_FORCE_MOCK=1 → mock forecast for %s", aoi_id)
         return get_mock_forecast_geojson(aoi_id, forecast_hours)
 
     if not detected_geojson.get("features"):
+        if strict:
+            raise RuntimeError(
+                f"drift_engine: zero detections for {aoi_id}; strict mode disallows mock fallback"
+            )
         logger.info("drift_engine: zero detections for %s → mock forecast (nothing to drift)", aoi_id)
         return get_mock_forecast_geojson(aoi_id, forecast_hours)
 
@@ -199,13 +252,16 @@ def simulate_drift(
         cfg = Settings()
         # Clamp horizon to requested forecast_hours so tracker doesn't integrate past it.
         cfg.physics.horizon_hours = int(forecast_hours)
-        # D-15 API latency knob: use 5 particles/detection on the hot endpoint
-        # (the prebake script and E2E test keep the full 20 for KDE quality).
-        # 20 particles × xarray.interp is ~2-3x over the 5s forecast budget.
-        cfg.physics.particles_per_detection = 5
+        # API latency knob: use a small particle budget on hot endpoints.
+        # Heavier pre-bake/offline flows can run with larger values.
+        cfg.physics.particles_per_detection = 3
 
         detections_fc = _api_shape_to_detection_fc(detected_geojson)
         if not detections_fc.features:
+            if strict:
+                raise RuntimeError(
+                    f"drift_engine: detection conversion dropped all features for {aoi_id}"
+                )
             logger.info("drift_engine: detections dropped in conversion → mock for %s", aoi_id)
             return get_mock_forecast_geojson(aoi_id, forecast_hours)
 
@@ -224,7 +280,8 @@ def simulate_drift(
                 )
                 env = None
         if env is None:
-            env = _build_synthetic_env(int(forecast_hours))
+            bbox = _api_detection_bounds(detected_geojson)
+            env = _build_synthetic_env(int(forecast_hours), bbox=bbox)
             logger.info("drift_engine: using synthetic env (constant eastward current)")
 
         envelope = forecast_drift(detections_fc, cfg, env=env)
@@ -234,5 +291,7 @@ def simulate_drift(
         )
         return _envelope_to_api_shape(envelope, aoi_id, forecast_hours)
     except Exception as e:
+        if strict:
+            raise RuntimeError(f"drift_engine: real forecast failed for {aoi_id}: {e}") from e
         logger.warning("drift_engine: real forecast failed for %s: %s → mock", aoi_id, e)
         return get_mock_forecast_geojson(aoi_id, forecast_hours)
