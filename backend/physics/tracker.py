@@ -92,8 +92,11 @@ def _step_particle(
     return new_p, new_alive
 
 
-def _empty_fc() -> FeatureCollection:
-    return FeatureCollection(type="FeatureCollection", features=[])
+def _empty_fc() -> dict:
+    # Return a dict literal so pydantic coerces to whatever generic
+    # FeatureCollection subtype the consumer field declares (e.g.
+    # `FeatureCollection[Feature[Polygon, dict]]` in ForecastFrame).
+    return {"type": "FeatureCollection", "features": []}
 
 
 def _build_frame(
@@ -145,7 +148,9 @@ def _build_frame(
     return ForecastFrame(
         hour=hour,
         particle_positions=wgs_positions,
-        density_polygons=FeatureCollection(type="FeatureCollection", features=features),
+        density_polygons={"type": "FeatureCollection", "features": [
+            f.model_dump() if hasattr(f, "model_dump") else f for f in features
+        ]},
     )
 
 

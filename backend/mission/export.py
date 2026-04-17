@@ -59,7 +59,12 @@ _COASTLINE: Optional[gpd.GeoDataFrame] = None
 def _get_coastline() -> Optional[gpd.GeoDataFrame]:
     global _COASTLINE
     if _COASTLINE is None and COASTLINE_PATH.exists():
-        _COASTLINE = gpd.read_file(COASTLINE_PATH)
+        # Prefer pyogrio (modern default, no fiona.path dep). Fall back to
+        # whatever default geopandas picks if pyogrio isn't importable.
+        try:
+            _COASTLINE = gpd.read_file(COASTLINE_PATH, engine="pyogrio")
+        except Exception:
+            _COASTLINE = gpd.read_file(COASTLINE_PATH)
     return _COASTLINE
 
 
