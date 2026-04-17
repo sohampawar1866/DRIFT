@@ -33,6 +33,26 @@ export const OpsDashboard: React.FC = () => {
   useEffect(() => {
     fetchDashboardMetrics();
     fetchDetection();
+    
+    // Dynamically update viewState center based on custom string or available AOIs
+    if (aoi_id && aoi_id.startsWith('custom_')) {
+      const parts = aoi_id.split('_');
+      if (parts.length === 3) {
+        setViewState(prev => ({
+          ...prev,
+          longitude: parseFloat(parts[1]),
+          latitude: parseFloat(parts[2])
+        }));
+      }
+    } else {
+      axios.get(`${API_BASE_URL}/api/v1/aois`).then(res => {
+        const aois = res.data.aois;
+        const matched = aois.find((a: any) => a.id === aoi_id);
+        if (matched) {
+          setViewState(prev => ({ ...prev, longitude: matched.center[0], latitude: matched.center[1] }));
+        }
+      }).catch(err => console.error(err));
+    }
   }, [aoi_id]);
 
   const fetchDetection = async () => {
@@ -176,15 +196,15 @@ export const OpsDashboard: React.FC = () => {
 
           <div style={{ background: '#111', borderRadius: '8px', padding: '1.5rem', border: '1px solid #333', flexGrow: 1 }}>
             <h3 style={{ margin: '0 0 1.5rem 0', color: '#aaa' }}><BarChart2 size={18} style={{ marginRight: '8px', verticalAlign: 'middle' }} /> PLASTIC DEGRADATION MODEL</h3>
-            {metricsData && metricsData.length > 0 ? (
+            {metricsData && metricsData.biofouling_chart_data && metricsData.biofouling_chart_data.length > 0 ? (
               <div style={{ height: '250px' }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={metricsData}>
+                  <LineChart data={metricsData.biofouling_chart_data}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                    <XAxis dataKey="time" stroke="#aaa" />
+                    <XAxis dataKey="age_days" stroke="#aaa" />
                     <YAxis stroke="#aaa" />
                     <Tooltip contentStyle={{ backgroundColor: '#222', border: '1px solid #00e5ff' }} />
-                    <Line type="monotone" dataKey="value" stroke="#00e5ff" strokeWidth={3} dot={{ fill: '#00e5ff' }} />
+                    <Line type="monotone" dataKey="simulated_confidence" stroke="#00e5ff" strokeWidth={3} dot={{ fill: '#00e5ff' }} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>

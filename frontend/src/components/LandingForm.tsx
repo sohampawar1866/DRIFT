@@ -2,16 +2,17 @@ import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Map from 'react-map-gl/maplibre';
 import DeckGL from '@deck.gl/react';
-import { ArcLayer, PathLayer, PolygonLayer, ScatterplotLayer, GeoJsonLayer } from '@deck.gl/layers';
+import { LineLayer, PathLayer, PolygonLayer, ScatterplotLayer, GeoJsonLayer } from '@deck.gl/layers';
 import * as turf from '@turf/turf';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import axios from 'axios';
 
 const INITIAL_VIEW_STATE = {
   longitude: 72.8,
   latitude: 19.0,
   zoom: 10,
-  pitch: 45, // 3D Pitch for Deck.GL
-  bearing: -10
+  pitch: 0, // Flat 2D Map for clear tactical view
+  bearing: 0
 };
 
 export const LandingForm: React.FC = () => {
@@ -22,27 +23,20 @@ export const LandingForm: React.FC = () => {
   const [drawingPoints, setDrawingPoints] = useState<[number, number][]>([]);
   const [currentSelection, setCurrentSelection] = useState<any>(null);
 
-  // MOCK HIGH-RES COASTAL GEOJSON
-  const coastalGeoJson = {
-    type: 'FeatureCollection',
-    features: [
-      {
-        type: 'Feature',
-        properties: { intensity: 0.9, name: "High Risk Area" },
-        geometry: { type: 'LineString', coordinates: [[72.8, 18.9], [72.81, 18.95], [72.805, 19.0], [72.82, 19.05], [72.81, 19.1]] }
-      },
-      {
-        type: 'Feature',
-        properties: { intensity: 0.3, name: "Low Risk Area" },
-        geometry: { type: 'LineString', coordinates: [[72.82, 19.05], [72.84, 19.1], [72.85, 19.15]] }
-      }
-    ]
-  };
+  const [coastalGeoJson, setCoastalGeoJson] = useState<any>({ type: 'FeatureCollection', features: [] });
+  const [searchHistory, setSearchHistory] = useState<any[]>([]);
 
-  const searchHistory = [
-    { id: "S1", coordinates: [[72.75, 18.95], [72.78, 18.95], [72.78, 18.92], [72.75, 18.92]], center: [72.765, 18.935] as [number,number], driftVector: [72.80, 18.98] as [number,number], density: 0.85, date: "2026-04-16" },
-    { id: "S2", coordinates: [[72.65, 18.85], [72.68, 18.85], [72.68, 18.82], [72.65, 18.82]], center: [72.665, 18.835] as [number,number], driftVector: [72.70, 18.87] as [number,number], density: 0.45, date: "2026-04-17" }
-  ];
+  React.useEffect(() => {
+    // Load local history from sessionStorage
+    const localHist = sessionStorage.getItem('drift_active_history');
+    if (localHist) {
+      try { setSearchHistory(JSON.parse(localHist)); } catch(e){}
+    }
+    // Fetch dynamic coastline
+    axios.get('http://localhost:8000/api/v1/tracker/coastline').then(res => {
+      setCoastalGeoJson(res.data);
+    }).catch(console.error);
+  }, []);
 
   const getDensityColor = (density: number): [number, number, number, number] => {
     if (density > 0.7) return [255, 23, 68, 200]; // Neon Pink/Red
@@ -88,17 +82,25 @@ export const LandingForm: React.FC = () => {
       autoHighlight: true
     }),
 
-    // --- HISTORICAL DRIFT ARCS (3D SWEEPING ARROWS) ---
-    new ArcLayer({
-      id: 'drift-arcs',
+    // --- PREDICTIVE DRIFT VECTOR (FLAT 2D LINE TO COAST) ---
+    new LineLayer({
+      id: 'drift-vectors',
       data: searchHistory,
       getSourcePosition: (d: any) => d.center,
       getTargetPosition: (d: any) => d.driftVector,
-      getSourceColor: (d: any) => getDensityColor(d.density), // Origin box color
-      getTargetColor: [255, 0, 0, 255],                       // Lands on red
-      getWidth: 4,
-      getHeight: 0.5, // The apex height of the 3D arc
-      getTilt: 0,
+      getColor: (d: any) => getDensityColor(d.density), // Origin box color
+      getWidth: 5,
+      pickable: true
+    }),
+    
+    // --- IMPACT ZONES (DOTS ON COAST) ---
+    new ScatterplotLayer({
+      id: 'impact-zones',
+      data: searchHistory,
+      getPosition: (d: any) => d.driftVector,
+      getFillColor: [255, 10, 10, 255],
+      getRadius: 6000, // 6 km radius hit marker
+      radiusMinPixels: 4,
       pickable: true
     }),
 
@@ -147,11 +149,32 @@ export const LandingForm: React.FC = () => {
     })
   ].filter(Boolean);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (currentSelection) {
-      const center = turf.centerOfMass(currentSelection).geometry.coordinates;
-      const customAoiId = `custom_${center[0].toFixed(4)}_${center[1].toFixed(4)}`;
-      navigate(`/aoi/${customAoiId}`);
+      try {
+        const response = await axios.post('http://localhost:8000/api/v1/tracker/search', {
+          coordinates: [...drawingPoints, drawingPoints[0]]
+        });
+        
+        const newHist = [response.data, ...searchHistory].slice(0, 5); // Keep last 5
+        setSearchHistory(newHist);
+        sessionStorage.setItem('drift_active_history', JSON.stringify(newHist));
+        
+        // Let's reload coastline intensity to respond instantly to the backend update
+        const coastRes = await axios.get('http://localhost:8000/api/v1/tracker/coastline');
+        setCoastalGeoJson(coastRes.data);
+        
+        const center = turf.centerOfMass(currentSelection).geometry.coordinates;
+        const customAoiId = `custom_${center[0].toFixed(4)}_${center[1].toFixed(4)}`;
+        
+        // Reset local selection drawing state so we can see the popups
+        setDrawingPoints([]);
+        setCurrentSelection(null);
+        // We comment out navigate so the user hits the UX they asked for ("on spot popup")
+        // navigate(`/aoi/${customAoiId}`);
+      } catch (err) {
+        console.error(err);
+      }
     }
   };
 
@@ -202,7 +225,7 @@ export const LandingForm: React.FC = () => {
           <div style={{ width: '16px', height: '16px', background: '#ff1744', borderRadius: '4px', boxShadow: '0 0 5px #ff1744' }}></div> Critical Coastline Accumulation
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-          <div style={{ width: '20px', height: '2px', background: 'linear-gradient(90deg, #ffea00, #ff1744)' }}></div> 3D Arc: Predictive Drift Path
+          <div style={{ width: '20px', height: '2px', background: 'linear-gradient(90deg, #ffea00, #ff1744)' }}></div> Flat Vector: Predictive Drift Path
         </div>
       </div>
     </div>

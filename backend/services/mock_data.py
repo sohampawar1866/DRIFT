@@ -1,17 +1,65 @@
 import random
 
+def get_mock_aois():
+    """
+    Returns a list of available pre-staged regions for the frontend dropdown.
+    """
+    return {
+        "aois": [
+            {
+                "id": "mumbai",
+                "name": "Mumbai Offshore",
+                "center": [72.85, 18.95],
+                "bounds": [[72.7, 18.8], [73.0, 19.1]]
+            },
+            {
+                "id": "gulf_of_mannar",
+                "name": "Gulf of Mannar",
+                "center": [79.05, 8.85],
+                "bounds": [[78.6, 8.5], [79.5, 9.2]]
+            },
+            {
+                "id": "chennai",
+                "name": "Chennai Coast",
+                "center": [80.35, 13.0],
+                "bounds": [[80.2, 12.8], [80.5, 13.2]]
+            },
+            {
+                "id": "andaman",
+                "name": "Andaman Islands",
+                "center": [92.75, 11.75],
+                "bounds": [[92.5, 11.5], [93.0, 12.0]]
+            }
+        ]
+    }
+
 def get_mock_detection_geojson(aoi_id: str):
     """
     Returns mock sub-pixel plastic detection polygons.
     """
     # Coordinates for Mumbai offshore area
-    base_lon, base_lat = 72.8, 18.9
+    base_lon, base_lat = 72.85, 18.95
+    
+    if aoi_id and aoi_id.startswith("custom_"):
+        parts = aoi_id.split("_")
+        if len(parts) == 3:
+            try:
+                base_lon, base_lat = float(parts[1]), float(parts[2])
+            except ValueError:
+                pass
+    else:
+        # Match with get_mock_aois
+        aois = get_mock_aois()["aois"]
+        for aoi in aois:
+            if aoi["id"] == aoi_id:
+                base_lon, base_lat = aoi["center"]
+                break
     
     features = []
     # Generate 5 random "plastic clusters"
     for i in range(5):
-        lon = base_lon - random.uniform(0.1, 0.4)
-        lat = base_lat + random.uniform(0.1, 0.4)
+        lon = base_lon - random.uniform(-0.1, 0.1)
+        lat = base_lat + random.uniform(-0.1, 0.1)
         # Small polygon representing some macroplastic
         polygon = [
             [lon, lat],
@@ -95,33 +143,6 @@ def get_mock_mission_geojson(aoi_id: str):
         "features": [line_feature]
     }
 
-
-def get_mock_aois():
-    """
-    Returns a list of available pre-staged regions for the frontend dropdown.
-    """
-    return {
-        "aois": [
-            {
-                "id": "mumbai",
-                "name": "Mumbai Offshore",
-                "center": [72.8, 18.9],
-                "bounds": [[72.5, 18.6], [73.1, 19.3]]
-            },
-            {
-                "id": "gulf_of_mannar",
-                "name": "Gulf of Mannar",
-                "center": [78.9, 9.1],
-                "bounds": [[78.5, 8.8], [79.2, 9.4]]
-            },
-            {
-                "id": "arabian_sea_gyre",
-                "name": "Arabian Sea Gyre Edge",
-                "center": [68.5, 15.0],
-                "bounds": [[68.0, 14.5], [69.0, 15.5]]
-            }
-        ]
-    }
 
 def get_mock_dashboard_metrics(aoi_id: str):
     """

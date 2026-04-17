@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from api.routes import router
+from api.tracker_routes import router as tracker_router
 
 app = FastAPI(
     title="DRIFT API",
@@ -20,6 +21,7 @@ app.add_middleware(
 )
 
 app.include_router(router)
+app.include_router(tracker_router)
 
 @app.get("/")
 async def root():

@@ -61,8 +61,9 @@ Thumbs.db
 # Project Data / Large files
 # =====================
 data/
-backend/data/
+backend/data/*
 *.geojson
+!backend/data/india_coastline_segmented.geojson
 *.shp
 *.gpkg
 *.tif
