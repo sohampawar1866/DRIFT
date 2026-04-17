@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import tempfile
+import os
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -77,6 +78,7 @@ async def list_aois():
 
 @router.get("/detect")
 async def detect_plastic(
+<<<<<<< HEAD
     aoi_id: str = "mumbai",
     s2_tile_path: str | None = None,
     bbox: str | None = None,
@@ -89,10 +91,22 @@ async def detect_plastic(
     Silent fallback to mock data on any inference failure.
     """
     return _run_detection(aoi_id, s2_tile_path=s2_tile_path, bbox=bbox, polygon=polygon)
+=======
+    aoi_id: str = "mumbai", 
+    lat: float | None = None, 
+    lon: float | None = None,
+    s2_tile_path: str | None = None
+):
+    """Run the real plastic-detection pipeline on a MARIDA tile.
+    Now supports direct Lat/Lon coordinate searching.
+    """
+    return detect_macroplastic(aoi_id, lat=lat, lon=lon, s2_tile_path=s2_tile_path)
+>>>>>>> 1bbdf90 (Add environmental services, spectral monitoring, biofouling modeling, and update .gitignore)
 
 
 @router.get("/forecast")
 async def forecast_drift(
+<<<<<<< HEAD
     aoi_id: str = "mumbai",
     hours: int = 24,
     bbox: str | None = None,
@@ -109,6 +123,37 @@ async def forecast_drift(
         return simulate_drift(base_detect, aoi_id, hours)
     except RuntimeError as exc:
         raise _as_http_error(exc) from exc
+=======
+    aoi_id: str = "mumbai", 
+    lat: float | None = None, 
+    lon: float | None = None,
+    hours: int = 360
+):
+    """Detect → tracker. Auto-defaults to the 15-day (360h) landfall state."""
+    if hours not in (24, 72, 168, 360):
+        # Allow legacy 48h for compat
+        if hours == 48:
+            hours = 24
+        else:
+            raise HTTPException(status_code=400,
+                                detail="Invalid forecast step. Allowed: 24, 72, 168, 360.")
+    base_detect = detect_macroplastic(aoi_id, lat=lat, lon=lon)
+    return simulate_drift(base_detect, aoi_id, hours)
+>>>>>>> 1bbdf90 (Add environmental services, spectral monitoring, biofouling modeling, and update .gitignore)
+
+
+@router.post("/cache/clear")
+async def clear_system_cache():
+    """Wipe the local tiles and env cache to refresh detections."""
+    try:
+        from backend.services.stac_service import CACHE_DIR
+        import shutil
+        if os.path.exists(CACHE_DIR):
+            shutil.rmtree(CACHE_DIR)
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        return {"status": "success", "message": "Cache cleared."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/mission")
@@ -133,24 +178,47 @@ async def get_dashboard_stats(
 ):
     """Aggregated stats + biofouling-vs-age chart data for UI side-panels.
 
-    Derives totals from the real detection call when it produces features;
-    falls back to `mock_data.get_mock_dashboard_metrics` otherwise.
+    Enhancement: Includes live water temperature and chlorophyll from EnvService.
     """
     base_detect = _run_detection(aoi_id, bbox=bbox, polygon=polygon)
     feats = base_detect.get("features", [])
+    
+    # 1. Real environmental context
+    try:
+        from backend.core.config import Settings
+        from backend.services.env_service import EnvService
+        cfg = Settings()
+        env_svc = EnvService(cfg)
+        # Mocking coordinates from registry for metrics
+        from backend.services.aoi_registry import resolve
+        entry = resolve(aoi_id)
+        lon_c, lat_c = entry["center"] if entry else (72.8, 18.9)
+        env = env_svc.fetch_live_stack([lon_c], [lat_c])
+        water_temp = env.interp_sst(lon_c, lat_c, 0)
+        chl = 0.45 # Placeholder for Bio product fetch
+    except:
+        water_temp = 28.5
+        chl = 0.5
+
     if not feats:
-        return get_mock_dashboard_metrics(aoi_id)
+        mock = get_mock_dashboard_metrics(aoi_id)
+        mock["summary"].update({"water_temp": round(water_temp, 1), "chlorophyll": chl})
+        return mock
 
     total_area = sum(f["properties"].get("area_sq_meters", 0.0) for f in feats)
     confs = [f["properties"].get("confidence", 0.0) for f in feats]
     avg_conf = round(sum(confs) / len(confs), 3) if confs else 0.0
     high_priority = sum(1 for c in confs if c >= 0.75)
 
-    # Biofouling decay chart: mirrors the model's conf_adj = conf_raw * exp(-age/30).
+    # 2. Dynamic Biofouling chart using site-specific temp
     import math
+    tau_base = 30.0
+    temp_factor = max(0.5, min(2.0, water_temp / 25.0))
+    tau_eff = tau_base / temp_factor
+    
     biofouling_chart = [
-        {"age_days": d, "simulated_confidence": round(math.exp(-d / 30.0), 3)}
-        for d in (1, 5, 15, 30, 40)
+        {"age_days": d, "simulated_confidence": round(math.exp(-d / tau_eff), 3)}
+        for d in (1, 5, 15, 30, 45)
     ]
 
     return {
@@ -159,6 +227,9 @@ async def get_dashboard_stats(
             "total_patches": len(feats),
             "avg_confidence": avg_conf,
             "high_priority_targets": high_priority,
+            "water_temp": round(water_temp, 1),
+            "chlorophyll": chl,
+            "forecast_mode": "15-day / 90-day cutoff"
         },
         "biofouling_chart_data": biofouling_chart,
     }

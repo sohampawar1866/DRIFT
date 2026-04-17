@@ -168,55 +168,47 @@ def _api_shape_to_detection_fc(api_fc: dict[str, Any]):
 
 def _envelope_to_api_shape(env, aoi_id: str, forecast_hours: int) -> dict[str, Any]:
     """Adapt FROZEN ForecastEnvelope → legacy API dict shape.
-
-    Legacy /forecast shape: a single GeoJSON FeatureCollection of "drifted
-    polygons" with `forecast_hour` property. We surface the density polygons
-    from the requested horizon frame (+24/+48/+72), plus the source-detection
-    polygons snapped to the final particle positions as "drifted" polygons.
+    
+    Includes both drifting clusters and red-hue deposition clusters.
     """
-    # Pick the closest available density frame to the requested horizon.
     target_hour = int(forecast_hours)
     frame = next((f for f in env.frames if f.hour == target_hour), None)
     if frame is None:
-        # Fall back to the latest frame with density content.
-        with_density = [f for f in env.frames if f.density_polygons.features]
-        frame = with_density[-1] if with_density else env.frames[-1]
+        frame = env.frames[-1]
 
     features: list[dict[str, Any]] = []
 
-    # Density polygons (isodensity contours) — the headline output.
+    # 1. Drifting plume density contours
     for dp in frame.density_polygons.features:
         geom = dp.geometry.model_dump() if hasattr(dp.geometry, "model_dump") else dp.geometry
         props = dict(dp.properties) if dp.properties else {}
-        props.update({
-            "forecast_hour": target_hour,
-            "aoi_id": aoi_id,
-            "type": "density_contour",
-        })
-        features.append({
-            "type": "Feature",
-            "geometry": geom,
-            "properties": props,
-        })
+        props.update({"forecast_hour": target_hour, "aoi_id": aoi_id, "type": "density_contour"})
+        features.append({"type": "Feature", "geometry": geom, "properties": props})
 
-    # Raw particle positions for the frame (for UI overlays).
-    # Represent as small point-wrapped polygons? Cleanest: emit them as a single
-    # MultiPoint-like set in a "particles" property. We'll keep it simple:
-    # emit one Point feature per detection cluster (first particle of each).
-    # Legacy shape tolerates extra features, so this is additive.
+    # 2. Deposition (Beached) hotspots - RED HUE
+    for dp in frame.deposition_polygons.features:
+        geom = dp.geometry.model_dump() if hasattr(dp.geometry, "model_dump") else dp.geometry
+        props = dict(dp.properties) if dp.properties else {}
+        props.update({
+            "forecast_hour": target_hour, 
+            "aoi_id": aoi_id, 
+            "type": "deposition_hotspot",
+            "fill": "#ff0000",
+            "stroke": "#8b0000",
+            "description": "Predicted landfall point (Red Hue)"
+        })
+        features.append({"type": "Feature", "geometry": geom, "properties": props})
+
+    # 3. Individual drifting particle points
     n_particles = len(frame.particle_positions)
     if n_particles > 0:
-        step = max(1, n_particles // 50)   # cap at ~50 points for UI smoothness
+        step = max(1, n_particles // 30)
         for i in range(0, n_particles, step):
             lon, lat = frame.particle_positions[i]
             features.append({
                 "type": "Feature",
                 "geometry": {"type": "Point", "coordinates": [lon, lat]},
-                "properties": {
-                    "forecast_hour": target_hour,
-                    "aoi_id": aoi_id,
-                    "type": "particle",
-                },
+                "properties": {"forecast_hour": target_hour, "aoi_id": aoi_id, "type": "particle"}
             })
 
     return {"type": "FeatureCollection", "features": features}
@@ -227,29 +219,37 @@ def simulate_drift(
     aoi_id: str,
     forecast_hours: int,
 ) -> dict[str, Any]:
+<<<<<<< HEAD
     """Forecast plastic drift over `forecast_hours` given detected polygons.
 
     Falls back to mock forecast on failures unless strict mode is enabled.
     """
     strict = strict_mode_enabled()
 
+=======
+    """Forecast plastic drift and deposition using live environmental data."""
+>>>>>>> 1bbdf90 (Add environmental services, spectral monitoring, biofouling modeling, and update .gitignore)
     if os.environ.get("DRIFT_FORCE_MOCK", "").strip() == "1":
-        logger.info("drift_engine: DRIFT_FORCE_MOCK=1 → mock forecast for %s", aoi_id)
         return get_mock_forecast_geojson(aoi_id, forecast_hours)
 
     if not detected_geojson.get("features"):
+<<<<<<< HEAD
         if strict:
             raise RuntimeError(
                 f"drift_engine: zero detections for {aoi_id}; strict mode disallows mock fallback"
             )
         logger.info("drift_engine: zero detections for %s → mock forecast (nothing to drift)", aoi_id)
+=======
+>>>>>>> 1bbdf90 (Add environmental services, spectral monitoring, biofouling modeling, and update .gitignore)
         return get_mock_forecast_geojson(aoi_id, forecast_hours)
 
     try:
         from backend.core.config import Settings
         from backend.physics.tracker import forecast_drift
+        from backend.services.env_service import EnvService
 
         cfg = Settings()
+<<<<<<< HEAD
         # Clamp horizon to requested forecast_hours so tracker doesn't integrate past it.
         cfg.physics.horizon_hours = int(forecast_hours)
         # API latency knob: use a small particle budget on hot endpoints.
@@ -284,11 +284,34 @@ def simulate_drift(
             env = _build_synthetic_env(int(forecast_hours), bbox=bbox)
             logger.info("drift_engine: using synthetic env (constant eastward current)")
 
+=======
+        env_svc = EnvService(cfg)
+
+        # 1. Extract coordinates for live subsetting
+        lons, lats = [], []
+        for f in detected_geojson["features"]:
+            coords = f["geometry"]["coordinates"][0] # Polygon exterior
+            lons.extend([c[0] for c in coords])
+            lats.extend([c[1] for c in coords])
+
+        # 2. Fetch LIVE environment stack (Currents, Winds, SST)
+        env = env_svc.fetch_live_stack(lons, lats)
+        logger.info("drift_engine: using live curated environment for %s", aoi_id)
+
+        detections_fc = _api_shape_to_detection_fc(detected_geojson)
+        
+        # 3. Run the tracking with beached support
+>>>>>>> 1bbdf90 (Add environmental services, spectral monitoring, biofouling modeling, and update .gitignore)
         envelope = forecast_drift(detections_fc, cfg, env=env)
-        logger.info(
-            "drift_engine: real tracker OK for %s (frames=%d, particles/det=%d)",
-            aoi_id, len(envelope.frames), cfg.physics.particles_per_detection,
-        )
+        
+        # 4. (Optional) Run Alerting logic
+        try:
+            from backend.services.alert_service import AlertService
+            alert_svc = AlertService(cfg)
+            alert_svc.analyze_and_trigger(aoi_id, envelope)
+        except Exception as alert_e:
+            logger.warning("drift_engine: alerting failed: %s", alert_e)
+
         return _envelope_to_api_shape(envelope, aoi_id, forecast_hours)
     except Exception as e:
         if strict:

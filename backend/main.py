@@ -43,12 +43,38 @@ app.include_router(router)
 app.include_router(tracker_router)
 
 
-@app.get("/")
-async def root():
-    return {"status": "ok", "app": "DRIFT"}
+@app.on_event("startup")
+async def startup_event():
+    import logging
+    import os
+    from backend.core.config import Settings
+    
+    logger = logging.getLogger("backend.startup")
+    cfg = Settings()
+    
+    logger.info("[SYSTEM] OCEANTRACE STARTUP INITIALIZED")
+    
+    # 1. Verify Environmental Data (Physics)
+    if cfg.physics.cmems_path.exists():
+        logger.info(f"[PHYSICS] CMEMS Data Found ({cfg.physics.cmems_path.name})")
+    else:
+        logger.warning(f"[PHYSICS] CMEMS Data Missing! ({cfg.physics.cmems_path})")
+        
+    if cfg.physics.era5_path.exists():
+        logger.info(f"[PHYSICS] ERA5 Data Found ({cfg.physics.era5_path.name})")
+    else:
+        logger.warning(f"[PHYSICS] ERA5 Data Missing! ({cfg.physics.era5_path})")
+
+    # 2. Verify Credentials (Masked)
+    logger.info("[SECURITY] Credential Strings Verification:")
+    for key, val in os.environ.items():
+        if "API" in key or "SECRET" in key or "KEY" in key:
+            masked = val[:4] + "****" + val[-4:] if len(val) > 8 else "****"
+            logger.info(f"   - {key}: {masked}")
+
+    logger.info("OceanTrace is mission-ready.")
 
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True)

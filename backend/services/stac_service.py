@@ -2,21 +2,27 @@ import os
 import json
 import urllib.request
 import shutil
+<<<<<<< HEAD
 import logging
 from pystac_client import Client
+=======
+>>>>>>> 1bbdf90 (Add environmental services, spectral monitoring, biofouling modeling, and update .gitignore)
 import datetime
 from datetime import timedelta
+from pathlib import Path
+from pystac_client import Client
+import stackstac
+import xarray as xr
+import rioxarray
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-# Grab the timeout from .env (defaults to 30 seconds if missing)
 STAC_FETCH_TIMEOUT = int(os.getenv("STAC_FETCH_TIMEOUT", 30))
-
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "cache")
 
+<<<<<<< HEAD
 
 def _required_band_paths(item_folder: str) -> dict:
     return {
@@ -72,6 +78,10 @@ def query_sentinel2_l2a_aws(bbox: list, max_cloud_cover: int = 15, days_back: in
     Returns:
         dict: A dictionary containing metadata and pre-signed S3 hrefs for the needed bands.
     """
+=======
+def query_sentinel2_l2a_aws(bbox: list, max_cloud_cover: int = 20, days_back: int = 30) -> dict:
+    """Queries for Sentinel-2 L2A with all required bands for MARIDA-style inference."""
+>>>>>>> 1bbdf90 (Add environmental services, spectral monitoring, biofouling modeling, and update .gitignore)
     api_url = "https://earth-search.aws.element84.com/v1"
     client = Client.open(api_url)
     
@@ -79,13 +89,17 @@ def query_sentinel2_l2a_aws(bbox: list, max_cloud_cover: int = 15, days_back: in
     start_date = end_date - timedelta(days=days_back)
     date_range = f"{start_date.strftime('%Y-%m-%d')}/{end_date.strftime('%Y-%m-%d')}"
     
+    print(f"[STAC] Searching AWS Earth Search: BBox={bbox}, Cloud<{max_cloud_cover}%, Days={days_back}...")
+    
     search = client.search(
         collections=["sentinel-2-l2a"],
         bbox=bbox,
         datetime=date_range,
-        query={"eo:cloud_cover": {"lt": max_cloud_cover}}
+        query={"eo:cloud_cover": {"lt": max_cloud_cover}},
+        sortby=[{"field": "properties.datetime", "direction": "desc"}]
     )
     
+<<<<<<< HEAD
     items = [
         it for it in search.items()
         if it.datetime is not None
@@ -103,38 +117,108 @@ def query_sentinel2_l2a_aws(bbox: list, max_cloud_cover: int = 15, days_back: in
             break
     if best_item is None:
         return {"error": "No Sentinel-2 item had required 'nir' and 'red' assets."}
+=======
+    items = list(search.items())
+    if not items:
+        # Fallback search: loosen constraints
+        if days_back < 60 or max_cloud_cover < 50:
+             print("[STAC] Warning: No items found in sharp window. Attempting resilient fallback (Cloud<50%, Days=60)...")
+             return query_sentinel2_l2a_aws(bbox, max_cloud_cover=50, days_back=60)
+        
+        print(f"[STAC] Critical: No Sentinel-2 imagery found at {bbox} even with loose constraints.")
+        return {"error": "No Sentinel-2 imagery found."}
+        
+    best_item = items[0]
+    print(f"[STAC] Match Found: {best_item.id} from {best_item.datetime} (Cloud: {best_item.properties.get('eo:cloud_cover')}%)")
+>>>>>>> 1bbdf90 (Add environmental services, spectral monitoring, biofouling modeling, and update .gitignore)
     
+    # MARIDA mapping for 10 bands + Visual (TCI)
+    bands_mapping = {
+        "B02": "blue",
+        "B03": "green",
+        "B04": "red",
+        "B05": "rededge1",
+        "B06": "rededge2",
+        "B07": "rededge3",
+        "B08": "nir",
+        "B8A": "nir08",
+        "B11": "swir16",
+        "B12": "swir22",
+        "visual": "visual"
+    }
+    
+    assets = {}
+    for b_name, asset_key in bands_mapping.items():
+        asset = best_item.assets.get(asset_key)
+        if asset:
+            assets[b_name] = asset.href
+            
     return {
         "id": best_item.id,
         "datetime": best_item.datetime.isoformat(),
         "cloud_cover": best_item.properties.get("eo:cloud_cover"),
-        "assets": {
-            "red": best_item.assets.get("red").href if best_item.assets.get("red") else None,
-            "green": best_item.assets.get("green").href if best_item.assets.get("green") else None,
-            "blue": best_item.assets.get("blue").href if best_item.assets.get("blue") else None,
-            "nir": best_item.assets.get("nir").href if best_item.assets.get("nir") else None,
-            "red_edge_2": best_item.assets.get("rededge2").href if best_item.assets.get("rededge2") else None,
-            "swir_1": best_item.assets.get("swir16").href if best_item.assets.get("swir16") else None,
-        },
-        "geometry": best_item.geometry
+        "assets": assets,
+        "item": best_item 
     }
 
 
 def get_live_or_cached_imagery(aoi_id: str, bbox: list) -> dict:
-    """
-    Core Logic:
-    1. Tries to find the newest image ID from AWS STAC.
-    2. Downloads it locally if we don't have it yet.
-    3. If AWS fails (no internet), loads the most recent local file from the cache as a fallback!
-    """
+    """Fetch, stack, and cache live multi-band imagery."""
     aoi_folder = os.path.join(CACHE_DIR, aoi_id)
     os.makedirs(aoi_folder, exist_ok=True)
     
-    stac_metadata = None
     try:
-        # 1. Ask STAC for the newest image bounds
-        stac_metadata = query_sentinel2_l2a_aws(bbox, max_cloud_cover=20, days_back=7)
+        stac_result = query_sentinel2_l2a_aws(bbox)
+        if "error" in stac_result:
+            return stac_result
+            
+        item_id = stac_result["id"]
+        item_folder = os.path.join(aoi_folder, item_id)
+        os.makedirs(item_folder, exist_ok=True)
+        
+        stack_path = os.path.join(item_folder, "stack.tif")
+        
+        if os.path.exists(stack_path):
+            return {"source": "cache", "id": item_id, "local_path": stack_path}
+            
+        print(f"[STAC] FETCHING LIVE STACK: {item_id}")
+        
+        # Use stackstac to handle the heavy lifting (lazy loading + resampling)
+        # We need the pystac item for stackstac
+        item = stac_result["item"]
+        
+        # Filter for the 10 bands we mapped
+        bands = list(stac_result["assets"].keys())
+        # stackstac expects the asset keys (e.g. 'blue', 'red')
+        assets_to_load = [stac_result["item"].assets[k.lower() if k != 'B8A' else 'nir08'].key for k in ["B02","B03","B04","B05","B06","B07","B08","B8A","B11","B12"]]
+        # Actually, let's just use stackstac's assets filter
+        asset_keys = ["blue", "green", "red", "rededge1", "rededge2", "rededge3", "nir", "nir08", "swir16", "swir22"]
+        
+        stack = stackstac.stack(
+            item,
+            assets=asset_keys,
+            bounds_latlon=bbox,
+            resolution=10, # Force MARIDA standard 10m
+            epsg=32633 # Default UTM, we'll refine if needed or let rioxarray handle
+        ).squeeze()
+        
+        # Convert to numpy and save
+        stack_data = stack.compute()
+        # Ensure ordering: MARIDA expects [B2, B3, B4, B5, B6, B7, B8, B8A, B11, B12]
+        # stackstac appends 'band' coord
+        
+        stack_data.rio.to_raster(stack_path)
+        print(f"[STAC] LIVE STACK CREATED: {stack_path}")
+        
+        return {
+            "source": "aws_live",
+            "id": item_id,
+            "local_path": stack_path,
+            "bands": asset_keys
+        }
+        
     except Exception as e:
+<<<<<<< HEAD
         logger.warning("stac: network error querying catalog for %s: %s", aoi_id, e)
     
     # 2. Offline Fallback Logic: Did we completely fail to talk to the internet?
@@ -183,3 +267,7 @@ def get_live_or_cached_imagery(aoi_id: str, bbox: list) -> dict:
         "id": item_id,
         "local_paths": local_paths
     }
+=======
+        print(f"Live STAC pipeline failed: {e}")
+        return {"error": str(e)}
+>>>>>>> 1bbdf90 (Add environmental services, spectral monitoring, biofouling modeling, and update .gitignore)

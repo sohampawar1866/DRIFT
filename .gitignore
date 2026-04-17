@@ -1,6 +1,14 @@
+<<<<<<< HEAD
 # =====================
 # Environment / secrets
 # =====================
+=======
+# Environment
+venv/
+env/
+.venv/
+venv_new/
+>>>>>>> 1bbdf90 (Add environmental services, spectral monitoring, biofouling modeling, and update .gitignore)
 .env
 .env.*
 !.env.example

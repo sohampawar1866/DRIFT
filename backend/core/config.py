@@ -42,6 +42,8 @@ class PhysicsSettings(BaseModel):
     particles_per_detection: int = 20
     cmems_path: Path = Path("data/env/cmems_currents_72h.nc")
     era5_path: Path = Path("data/env/era5_winds_72h.nc")
+    max_cutoff_days: int = 90
+    active_horizon_days: int = 15
 
 
 class MissionSettings(BaseModel):
@@ -55,8 +57,9 @@ class MissionSettings(BaseModel):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         yaml_file=Path("backend/config.yaml"),
+        env_file=Path(".env"),
         env_nested_delimiter="__",
-        extra="forbid",
+        extra="ignore",
         case_sensitive=False,
     )
     ml: MLSettings = MLSettings()

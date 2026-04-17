@@ -66,6 +66,16 @@ class EnvStack:
         )
         return float(pt["uo"].values), float(pt["vo"].values)
 
+    def interp_sst(self, lon: float, lat: float, t_hours: float) -> float:
+        """Bilinear interpolation of thetao (SST) at (lon, lat, t_hours)."""
+        if "thetao" not in self.currents:
+            return 25.0  # fallback
+        t = self._t_offset(self.currents, t_hours)
+        pt = self.currents["thetao"].interp(
+            longitude=lon, latitude=lat, time=t, method="linear"
+        )
+        return float(pt.values)
+
     def interp_winds(self, lon: float, lat: float, t_hours: float) -> tuple[float, float]:
         """Bilinear interpolation of (u10, v10) at (lon, lat, t_hours)."""
         t = self._t_offset(self.winds, t_hours)

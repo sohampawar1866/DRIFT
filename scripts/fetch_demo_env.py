@@ -29,6 +29,11 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# Load credentials from .env file if it exists
+load_dotenv()
+
 
 BBOX_LON = (68.0, 92.0)
 BBOX_LAT = (5.0, 22.0)

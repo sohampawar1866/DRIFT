@@ -46,8 +46,13 @@ function endpoint(path: string): string {
 }
 
 const client = axios.create({
+<<<<<<< HEAD
   baseURL: API_BASE_URL || undefined,
   timeout: 20_000,
+=======
+  baseURL: API_BASE_URL,
+  timeout: 120_000,
+>>>>>>> 1bbdf90 (Add environmental services, spectral monitoring, biofouling modeling, and update .gitignore)
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -78,8 +83,36 @@ export interface AoiEntry {
   bounds?: [[number, number], [number, number]];
 }
 
+<<<<<<< HEAD
 export interface AoiListResponse {
   aois: AoiEntry[];
+=======
+export interface DetectionProps {
+  id: string;
+  confidence: number;
+  area_sq_meters: number;
+  age_days: number;
+  type: string;                        // always "macroplastic" today
+  fraction_plastic?: number;
+  water_temp?: number;
+  chlorophyll?: number;
+  fdi?: number;
+  ndvi?: number;
+  k_factor?: number;
+  conf_range?: [number, number];
+  class_est?: string;
+}
+export interface DetectionFeature {
+  type: 'Feature';
+  geometry: GeoJSON.Polygon;
+  properties: DetectionProps;
+}
+export interface DetectionFC {
+  type: 'FeatureCollection';
+  features: DetectionFeature[];
+  bbox?: [number, number, number, number]; // [min_lon, min_lat, max_lon, max_lat]
+  visual_url?: string;
+>>>>>>> 1bbdf90 (Add environmental services, spectral monitoring, biofouling modeling, and update .gitignore)
 }
 
 export interface DetectionFC extends GeoJSON.FeatureCollection {
@@ -118,6 +151,8 @@ export interface DashboardMetrics {
     total_patches: number;
     avg_confidence: number;
     high_priority_targets: number;
+    water_temp?: number;
+    chlorophyll?: number;
   };
   biofouling_chart_data: Array<{ age_days: number; simulated_confidence: number }>;
 }
@@ -131,11 +166,19 @@ export interface SearchRecord {
   driftVector: [number, number];
 }
 
+<<<<<<< HEAD
+=======
+export type ForecastHours = 24 | 48 | 72 | 168 | 360;
+
+// ---------------------------------------------------------------- v1 API
+
+>>>>>>> 1bbdf90 (Add environmental services, spectral monitoring, biofouling modeling, and update .gitignore)
 export async function listAois(): Promise<AoiListResponse> {
   const res = await client.get<AoiListResponse>(endpoint('/aois'));
   return res.data;
 }
 
+<<<<<<< HEAD
 function spatialParams(spatial?: SpatialQuery): Record<string, string> {
   const params: Record<string, string> = {};
   if (spatial?.bbox) {
@@ -150,13 +193,34 @@ function spatialParams(spatial?: SpatialQuery): Record<string, string> {
 export async function detect(aoi_id: string, spatial?: SpatialQuery): Promise<DetectionFC> {
   const res = await client.get<DetectionFC>(endpoint('/detect'), {
     params: { aoi_id, ...spatialParams(spatial) },
+=======
+export async function detect(
+  aoi_id: string,
+  lat?: number,
+  lon?: number,
+  s2_tile_path?: string,
+): Promise<DetectionFC> {
+  const res = await client.get<DetectionFC>('/api/v1/detect', {
+    params: { aoi_id, lat, lon, s2_tile_path },
+>>>>>>> 1bbdf90 (Add environmental services, spectral monitoring, biofouling modeling, and update .gitignore)
   });
   return res.data;
 }
 
+<<<<<<< HEAD
 export async function forecast(aoi_id: string, hours: ForecastHours, spatial?: SpatialQuery): Promise<ForecastFC> {
   const res = await client.get<ForecastFC>(endpoint('/forecast'), {
     params: { aoi_id, hours, ...spatialParams(spatial) },
+=======
+export async function forecast(
+  aoi_id: string,
+  hours: ForecastHours,
+  lat?: number,
+  lon?: number,
+): Promise<ForecastFC> {
+  const res = await client.get<ForecastFC>('/api/v1/forecast', {
+    params: { aoi_id, hours, lat, lon },
+>>>>>>> 1bbdf90 (Add environmental services, spectral monitoring, biofouling modeling, and update .gitignore)
   });
   return res.data;
 }
@@ -201,7 +265,7 @@ export function exportUrl(aoi_id: string, format: ExportFormat, spatial?: Spatia
 }
 
 export function snapForecastHours(h: number): ForecastHours {
-  const legal: ForecastHours[] = [24, 48, 72];
+  const legal: ForecastHours[] = [24, 48, 72, 168, 360];
   return legal.reduce<ForecastHours>(
     (best, cur) => (Math.abs(cur - h) < Math.abs(best - h) ? cur : best),
     24,
@@ -235,6 +299,15 @@ export async function trackerClearHistory(): Promise<{ status: string; cleared: 
   return res.data;
 }
 
+<<<<<<< HEAD
+=======
+export async function clearCache(): Promise<{ status: string }> {
+  const res = await client.post<{ status: string }>('/api/v1/cache/clear');
+  return res.data;
+}
+
+// Namespaced default export for readable call sites: `api.detect(id)`.
+>>>>>>> 1bbdf90 (Add environmental services, spectral monitoring, biofouling modeling, and update .gitignore)
 const api = {
   API_BASE_URL,
   apiErrorMessage,
@@ -249,7 +322,11 @@ const api = {
   trackerSearch,
   trackerSubmit,
   trackerRevisit,
+<<<<<<< HEAD
   trackerClearHistory,
+=======
+  clearCache,
+>>>>>>> 1bbdf90 (Add environmental services, spectral monitoring, biofouling modeling, and update .gitignore)
 };
 
 export default api;

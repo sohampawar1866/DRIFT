@@ -80,7 +80,10 @@ def get_mock_detection_geojson(aoi_id: str):
                 "confidence": round(random.uniform(0.5, 0.95), 2),
                 "area_sq_meters": round(random.uniform(15, 100), 2),
                 "age_days": random.randint(1, 40),
-                "type": "macroplastic"
+                "type": "macroplastic",
+                "water_temp": round(random.uniform(24.0, 31.0), 1),
+                "chlorophyll": round(random.uniform(0.1, 1.5), 2),
+                "k": round(random.uniform(0.01, 0.05), 3)
             }
         }
         features.append(feature)

@@ -112,6 +112,7 @@ export const LandingForm: React.FC = () => {
     if (!info.coordinate || info.coordinate.length < 2) return;
     const [lng, lat] = info.coordinate;
 
+<<<<<<< HEAD
     setDrawingPoints(() => {
       const nextPoints: [number, number][] = [[lng, lat]];
       const previewSquare = buildSentinelPatchSquare(lng, lat, VISUAL_PREVIEW_PATCH_SIZE_METERS);
@@ -120,6 +121,21 @@ export const LandingForm: React.FC = () => {
       setProcessingSelection(turf.polygon([[...processingSquare, processingSquare[0]]]));
       return nextPoints;
     });
+=======
+    // Shift to Single-Point Selection Flow (5km x 5km AOI)
+    // 2.5km offset in degrees (approximate)
+    const delta = 0.0225; // roughly 2.5km at standard latitudes
+    const newPoints: [number, number][] = [
+      [lng - delta, lat + delta],
+      [lng + delta, lat + delta],
+      [lng + delta, lat - delta],
+      [lng - delta, lat - delta],
+    ];
+
+    setDrawingPoints(newPoints);
+    const polygon = turf.polygon([[...newPoints, newPoints[0]]]);
+    setCurrentSelection(polygon);
+>>>>>>> 1bbdf90 (Add environmental services, spectral monitoring, biofouling modeling, and update .gitignore)
   }, []);
 
   // Deck.GL Layers
@@ -391,7 +407,10 @@ export const LandingForm: React.FC = () => {
             };
           }}
         >
-          <Map mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" />
+          <Map 
+            mapLibre={import('maplibre-gl')}
+            mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl/style.json" 
+          />
         </DeckGL>
 
         {hoverInfo && !hoverInfo.hasObject && (

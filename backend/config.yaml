@@ -1,5 +1,5 @@
 ml:
-  weights_source: dummy
+  weights_source: our_real
   kagglehub_handle: manastiwari1410/drift-unetpp/pytorch/v1
   confidence_threshold: 0.5
   min_area_m2: 200.0
