@@ -112,7 +112,11 @@ async def get_dashboard_stats(aoi_id: str = "mumbai"):
         raise _as_http_error(exc) from exc
     feats = base_detect.get("features", [])
     if not feats:
-        return get_mock_dashboard_metrics(aoi_id)
+        base = get_mock_dashboard_metrics(aoi_id)
+        if isinstance(base, dict):
+            base.setdefault("live_environment", _live_environment_for_aoi(aoi_id, []))
+            base.setdefault("deposition_heatmap", {"type": "FeatureCollection", "features": []})
+        return base
 
     total_area = sum(f["properties"].get("area_sq_meters", 0.0) for f in feats)
     confs = [f["properties"].get("confidence", 0.0) for f in feats]
@@ -126,6 +130,10 @@ async def get_dashboard_stats(aoi_id: str = "mumbai"):
         for d in (1, 5, 15, 30, 40)
     ]
 
+    # OceanTrace: live environment + deposition heatmap (best-effort).
+    live_env = _live_environment_for_aoi(aoi_id, feats)
+    deposition_fc = _deposition_heatmap_for_aoi(aoi_id, feats)
+
     return {
         "summary": {
             "total_area_sq_meters": round(total_area, 2),
@@ -134,7 +142,133 @@ async def get_dashboard_stats(aoi_id: str = "mumbai"):
             "high_priority_targets": high_priority,
         },
         "biofouling_chart_data": biofouling_chart,
+        "live_environment": live_env,
+        "deposition_heatmap": deposition_fc,
     }
+
+
+@router.get("/alerts")
+async def list_alerts(aoi_id: str = "mumbai"):
+    """Coastal hit-density alerts derived from the long-horizon beaching run.
+
+    Best-effort: if env data or beaching can't run, returns an empty list
+    with `degraded: true` so the frontend can render a "no alerts" state
+    instead of erroring.
+    """
+    try:
+        from backend.physics.beaching import run_beaching_forecast
+        from backend.services.drift_engine import _build_synthetic_env
+        from backend.services.alert_service import (
+            coastline_hit_density,
+            dispatch_alerts,
+        )
+        base_detect = detect_macroplastic(aoi_id)
+        feats = base_detect.get("features", [])
+        if not feats:
+            return {"alerts": [], "degraded": True, "reason": "no_detections"}
+        centroids = []
+        for f in feats[:5]:
+            geom = f.get("geometry", {})
+            coords = geom.get("coordinates", [[]])
+            if not coords or not coords[0]:
+                continue
+            ring = coords[0]
+            cx = sum(p[0] for p in ring) / len(ring)
+            cy = sum(p[1] for p in ring) / len(ring)
+            centroids.append((cx, cy))
+        if not centroids:
+            return {"alerts": [], "degraded": True, "reason": "no_centroids"}
+        cx0, cy0 = centroids[0]
+        env = _build_synthetic_env(24 * 15, bbox=(cx0 - 0.5, cy0 - 0.5, cx0 + 0.5, cy0 + 0.5))
+        result = run_beaching_forecast(
+            centroids, env, n_particles=15,
+            active_hours=24 * 7, cutoff_hours=24 * 30,
+        )
+        alerts = coastline_hit_density(
+            result.deposited_lonlat, segment_length_km=5.0, threshold=3,
+            aoi_id=aoi_id,
+        )
+        report = dispatch_alerts(alerts) if alerts else {"dispatched": 0, "logged": 0, "alerts": 0}
+        return {
+            "alerts": [a.model_dump() for a in alerts],
+            "deposited_count": len(result.deposited_lonlat),
+            "dispatch_report": report,
+            "degraded": False,
+        }
+    except Exception as e:
+        logger.warning("alerts endpoint degraded for %s: %s", aoi_id, e)
+        return {"alerts": [], "degraded": True, "reason": str(e)}
+
+
+def _live_environment_for_aoi(aoi_id: str, feats: list) -> dict:
+    """Best-effort live SST + Chl-a + dominant class. Falls back to climatology
+    constants if env_service / NetCDF cache aren't available."""
+    sst_c = 27.5
+    chl_mg_m3 = 0.35
+    try:
+        from backend.physics.env_service import fetch_env_for_bbox, EnvCredentialsMissing
+        if feats:
+            ring = feats[0]["geometry"]["coordinates"][0]
+            cx = sum(p[0] for p in ring) / len(ring)
+            cy = sum(p[1] for p in ring) / len(ring)
+            try:
+                bundle = fetch_env_for_bbox(
+                    (cx - 0.25, cy - 0.25, cx + 0.25, cy + 0.25),
+                    "2026-04-15", 3, "data/env_cache",
+                )
+                sst_c = bundle.sample_sst(cx, cy)
+                chl_mg_m3 = bundle.sample_chl(cx, cy)
+            except EnvCredentialsMissing:
+                pass
+    except Exception as e:
+        logger.debug("live_environment fallback: %s", e)
+    predicted_class = _dominant_class(feats)
+    return {
+        "sst_c": round(sst_c, 2),
+        "chl_mg_m3": round(chl_mg_m3, 3),
+        "predicted_class": predicted_class,
+    }
+
+
+def _dominant_class(feats: list) -> str:
+    if not feats:
+        return "Unknown"
+    plastic = sum(1 for f in feats if f.get("properties", {}).get("type", "plastic") == "plastic")
+    if plastic == len(feats):
+        return "Marine Debris (Plastic)"
+    if plastic == 0:
+        return "Sargassum-suspect"
+    return "Mixed"
+
+
+def _deposition_heatmap_for_aoi(aoi_id: str, feats: list) -> dict:
+    """Run a short beaching simulation off the AOI centroids and KDE the
+    deposited points. Returns an empty FeatureCollection on any failure."""
+    try:
+        from backend.physics.beaching import run_beaching_forecast, landfall_feature_collection
+        from backend.services.drift_engine import _build_synthetic_env
+        if not feats:
+            return {"type": "FeatureCollection", "features": []}
+        centroids = []
+        for f in feats[:3]:
+            ring = f.get("geometry", {}).get("coordinates", [[]])[0]
+            if not ring:
+                continue
+            cx = sum(p[0] for p in ring) / len(ring)
+            cy = sum(p[1] for p in ring) / len(ring)
+            centroids.append((cx, cy))
+        if not centroids:
+            return {"type": "FeatureCollection", "features": []}
+        cx0, cy0 = centroids[0]
+        env = _build_synthetic_env(24 * 7, bbox=(cx0 - 0.5, cy0 - 0.5, cx0 + 0.5, cy0 + 0.5))
+        result = run_beaching_forecast(
+            centroids, env, n_particles=12,
+            active_hours=24 * 5, cutoff_hours=24 * 14,
+        )
+        return landfall_feature_collection(result.deposited_lonlat)
+    except Exception as e:
+        logger.debug("deposition heatmap fallback empty: %s", e)
+        return {"type": "FeatureCollection", "features": []}
 
 
 @router.get("/mission/export")
