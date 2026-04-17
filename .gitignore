@@ -23,6 +23,10 @@ Thumbs.db
 
 # Project Data / Over-sized files
 data/
+backend/data/
 *.geojson
 *.shp
 *.gpkg
+*.tif
+*.tiff
+*.nc

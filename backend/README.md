@@ -18,10 +18,10 @@ Open your terminal and run these step-by-step:
 
 ```bash
 # 1. Navigate to the backend folder
-cd path/to/OceanTrace/backend
+cd path/to/DRIFT/backend
 
 # 2. Create the virtual environment using a stable python version
-python3.11 -m venv venv
+python3.12 -m venv venv
 
 # 3. Activate the virtual environment
 source venv/bin/activate
@@ -42,7 +42,7 @@ PowerShell or Command Prompt commands:
 
 ```powershell
 # 1. Navigate to the backend folder
-cd path\to\OceanTrace\backend
+cd path\to\DRIFT\backend
 
 # 2. Create the virtual environment using your stable python installation
 python -m venv venv
@@ -90,3 +90,17 @@ This is the interactive Swagger UI where you can immediately test the endpoints:
 
 **Troubleshooting**:
 *   *React Frontend gets blocked by CORS?* Ensure the FastAPI settings in `main.py` explicitly allow all origins (`allow_origins=["*"]`) for local development, which is already configured in the skeleton.
+
+---
+
+## 🛰 4. Understanding How Live Satellite Ingestion Works
+
+Our system uses **AWS Open Data (STAC API)** to fetch Sentinel-2 imagery. We've built an intelligent **Caching Strategy** to protect us on hackathon demo day:
+
+1.  **Frontend Input:** The user clicks a region on the UI (e.g., "Gulf of Mannar"). The frontend simply sends an `aoi_id` via the URL (`/api/v1/detect?aoi_id=gulf_of_mannar`).
+2.  **AOI to Bounding Box:** Our backend receives this string. It holds an internal dictionary mapping `gulf_of_mannar` to a hidden geographic coordinates box: `[78.6, 8.5, 79.5, 9.2]`. Essentially, `[Min_Longitude, Min_Latitude, Max_Longitude, Max_Latitude]`.
+3.  **STAC API Query:** We send that invisible boundary box to the Earth Search STAC API and ask: *"Provide the metadata for the newest low-cloud image overlapping this box"*
+4.  **The Cache Strategy**:
+    *   **First Run (or new data available):** We look in `backend/data/cache/<aoi_id>`. If we don't have the files for the newest ID, we fetch the large raw `.tif` bands from AWS S3, save them in the cache folder, and hand them to the AI model.
+    *   **Subsequent Runs:** We query STAC, but notice we already downloaded those specific images previously. We skip downloading entirely and feed the local files straight into the AI model, making the route incredibly fast.
+    *   **No Internet Emergency:** If the STAC API times out (no Wi-Fi during pitching), our code drops into a **Fallback Mode**, silently grabs the newest files existing in the local cache, and runs the AI pipeline on those. Your demo won't crash!

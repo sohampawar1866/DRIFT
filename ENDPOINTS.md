@@ -18,6 +18,10 @@ All backend routes return `application/json` unless specified otherwise.
 ### 2. Detection & ML Core
 *   **`GET /api/v1/detect?aoi_id={string}`**
     *   **Purpose:** Returns the sub-pixel plastic detection polygons for the selected region.
+    *   *Note on Data Strategy:* This route implements a clever AWS STAC + Local Caching strategy. It dynamically queries the live Sentinel-2 cloud catalog (STAC) using a mapped Bounding Box (bbox) based on the `aoi_id`. 
+        *   **Hit 1:** Downloads the newest bands straight from the AWS S3 URL bucket to the local drive (`backend/data/cache/` folder) and begins processing.
+        *   **Hit 2/N:** Detects we already have the latest image ID cached locally, bypasses the web entirely, and instantly returns processing using the local copy.
+        *   **Fallback:** If the internet dies mid-demo, it skips STAC and gracefully loads the most recent stored image chunk from `backend/data/cache/`.
     *   **Payload:** GeoJSON FeatureCollection of polygons with properties `id`, `confidence`, `area_sq_meters`, `age_days`.
     *   **Frontend Usage:** Add as a GeoJSON source to Mapbox/Leaflet to overlay the patches on top of the satellite tiles.
 
