@@ -1,4 +1,4 @@
-# PRD — PlastiTrack: Autonomous Sub-Pixel Detection & Trajectory Mapping of Floating Marine Macroplastics
+# PRD — DRIFT: Autonomous Sub-Pixel Detection & Trajectory Mapping of Floating Marine Macroplastics
 
 **Hackathon:** Sankalp Bharat — Problem SKB_P5
 **Team Target:** Top 3 / Winning submission
@@ -293,7 +293,7 @@ Wrap ~20 particles per detected patch for ensemble spread → kernel-density-est
 5. **Regional relevance (Sankalp Bharat framing).** Demo AOIs over Indian EEZ, integration hook for INCOIS format, cleanup planner aware of Indian port origins.
 6. **Honest scope.** We will tell judges exactly what is real vs. simulated. Credibility compounds; teams who over-claim lose in Q&A.
 
-**"Our standout line":** *"PlastiTrack is the only system that takes a Sentinel-2 scene and returns a cleanup mission — waypoints, vessel plan, and briefing — in under 90 seconds."*
+**"Our standout line":** *"DRIFT is the only system that takes a Sentinel-2 scene and returns a cleanup mission — waypoints, vessel plan, and briefing — in under 90 seconds."*
 
 ---
 
