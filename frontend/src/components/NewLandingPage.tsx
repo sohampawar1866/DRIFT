@@ -126,7 +126,7 @@ export const NewLandingPage: React.FC = () => {
           playsInline 
           className="absolute inset-0 w-full h-full object-cover"
         >
-          <source src="/bg1.mp4" type="video/mp4" />
+          <source src="/background.mp4" type="video/mp4" />
         </video>
 
         <div className="absolute inset-0 bg-black/10 z-10" />
