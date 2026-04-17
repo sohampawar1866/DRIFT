@@ -263,11 +263,11 @@ AOI bboxes (D-04, with +2° buffer merged into `lon [68, 92], lat [5, 22]`):
     - backend/mission/planner.py (plan_mission signature)
     - backend/physics/env_data.py (load_env_stack signature)
     - backend/tests/integration/test_inference_dummy.py (MARIDA patch discovery pattern)
-    - .planning/phases/02-trajectory-mission-planner/02-CONTEXT.md (D-19)
+    - .planning/phases/02-trajectory-mission-planner/02-CONTEXT.md (D-15 beach-on-NaN, D-19 E2E chain)
   </read_first>
   <behavior>
     - **E2E test**: find first MARIDA val patch; run full chain with synthetic env (build in-test via env_data.from_synthetic with constant 0.1 m/s current + 2 m/s wind); assert each stage output validates via pydantic round-trip; assert wall-clock < 20 s.
-    - **Real-data smoke (PHYS-05)**: skip if `data/env/cmems_currents_72h.nc` missing (decorator `@pytest.mark.skipif`). Otherwise, build a synthetic `DetectionFeatureCollection` with 10 tiny polygons clustered at (78.9, 9.2) Gulf of Mannar, call `forecast_drift` with `env=load_env_stack(...)`. Assert: (a) no NaN in any `frame.particle_positions`; (b) final positions (hour 72) all within Indian Ocean basin lon [68, 95], lat [0, 25]; (c) no particle with lon > 80.0 AND lat > 15.0 AND lat < 25.0 (rough Deccan Plateau exclusion — anything landing that deep inland is a bug). Note: beach-on-NaN may prune some particles; assert at least 5 of 10 particles survive.
+    - **Real-data smoke (PHYS-05)**: skip if `data/env/cmems_currents_72h.nc` missing (decorator `@pytest.mark.skipif`). Otherwise, build a synthetic `DetectionFeatureCollection` with 10 tiny polygons clustered at (78.9, 9.2) Gulf of Mannar, call `forecast_drift` with `env=load_env_stack(...)`. Assert, for **every frame** (not just final) and **every alive particle**: (a) `lon`/`lat` finite (no NaN); (b) inside Indian Ocean basin `lon [68, 95]`, `lat [0, 25]`; (c) NOT inside the rectangular Deccan Plateau exclusion box `DECCAN_BBOX = (80.0, 88.0, 15.0, 24.0)` — this is the PHYS-05 "no Deccan crossings" gate. Per D-15, beached particles retain their last valid sea position, so they naturally pass this check; only a tracker bug that propagates particles across land would fail. Also require `len(final.particle_positions) >= 25` (≥ 5 of 10 detections × `particles_per_detection`/something reasonable — use cfg.physics.particles_per_detection to compute threshold).
     - **Driver script**: `python scripts/run_full_chain_dummy.py --patch <path>` prints per-stage wall-clock to stdout, validates each boundary, writes final MissionPlan JSON to stdout or `--out`.
   </behavior>
   <action>
@@ -450,6 +450,12 @@ AOI bboxes (D-04, with +2° buffer merged into `lon [68, 92], lat [5, 22]`):
     CMEMS = Path("data/env/cmems_currents_72h.nc")
     ERA5 = Path("data/env/era5_winds_72h.nc")
 
+    # PHYS-05 Deccan Plateau exclusion box (lon_min, lon_max, lat_min, lat_max).
+    # Any particle landing inside this rectangle has crossed land -- tracker bug.
+    # Beached particles (D-15) retain their last valid sea position, so they
+    # naturally pass this check; only propagation-across-land would fail it.
+    DECCAN_BBOX = (80.0, 88.0, 15.0, 24.0)
+
 
     def _mannar_detection(lon: float, lat: float, idx: int) -> DetectionFeature:
         # Tiny square polygon (~200 m side at that latitude)
@@ -482,18 +488,26 @@ AOI bboxes (D-04, with +2° buffer merged into `lon [68, 92], lat [5, 22]`):
         envelope = forecast_drift(fc, cfg, env=env)
 
         assert len(envelope.frames) == 73
+
+        lon_min, lon_max, lat_min, lat_max = DECCAN_BBOX
         for frame in envelope.frames:
             for (lon, lat) in frame.particle_positions:
+                # (a) finite (no NaN) -- beached particles carry last valid sea pos (D-15)
                 assert np.isfinite(lon) and np.isfinite(lat), \
-                    f"NaN at hour={frame.hour}"
-                # Indian Ocean basin (roughly)
-                assert 68.0 <= lon <= 95.0, f"lon out of basin: {lon}"
-                assert 0.0 <= lat <= 25.0, f"lat out of basin: {lat}"
+                    f"NaN at hour={frame.hour}: ({lon}, {lat})"
+                # (b) inside Indian Ocean basin
+                assert 68.0 <= lon <= 95.0, f"lon out of basin at hour={frame.hour}: {lon}"
+                assert 0.0 <= lat <= 25.0, f"lat out of basin at hour={frame.hour}: {lat}"
+                # (c) PHYS-05: NOT inside Deccan Plateau exclusion box
+                assert not (lon_min < lon < lon_max and lat_min < lat < lat_max), \
+                    f"particle entered Deccan Plateau at hour {frame.hour}: ({lon:.3f}, {lat:.3f})"
 
-        # Final-hour sanity: beach-on-NaN may freeze some; require >= 5 particles
-        # still inside the Bay of Bengal / Gulf of Mannar region.
+        # Final-hour sanity: beach-on-NaN may freeze some; require >= 5 of 10 detections'
+        # worth of particles still alive (using cfg.physics.particles_per_detection).
         final = envelope.frames[-1]
-        assert len(final.particle_positions) >= 10 * cfg.physics.particles_per_detection // 4
+        min_survivors = 10 * cfg.physics.particles_per_detection // 4
+        assert len(final.particle_positions) >= min_survivors, \
+            f"only {len(final.particle_positions)} particles survived (need >= {min_survivors})"
     ```
   </action>
   <verify>
@@ -507,11 +521,13 @@ AOI bboxes (D-04, with +2° buffer merged into `lon [68, 92], lat [5, 22]`):
     - `grep -q "perf_counter" scripts/run_full_chain_dummy.py` exits 0 (per-stage timing, D-19)
     - `grep -q "use-synth-env" scripts/run_full_chain_dummy.py` exits 0
     - `grep -q "72.8" scripts/run_full_chain_dummy.py` exits 0 (Mumbai default origin)
+    - `grep -q "DECCAN_BBOX" backend/tests/integration/test_tracker_real.py` exits 0 (PHYS-05 Deccan exclusion gate)
+    - `grep -q "entered Deccan Plateau" backend/tests/integration/test_tracker_real.py` exits 0 (per-frame assertion message)
     - `python -m pytest backend/tests/integration/test_e2e_dummy_chain.py -x -q` — E2E test passes (under 20 s wall-clock; skips cleanly if MARIDA absent)
     - `python -m pytest backend/tests/integration/test_tracker_real.py -x -q` — either passes (if CMEMS+ERA5 fetched) OR skips with clear reason message
     - Full final phase pytest sweep: `python -m pytest backend/tests -q` exits 0 (all Phase 1 + Phase 2 tests green)
   </acceptance_criteria>
-  <done>scripts/run_full_chain_dummy.py + E2E integration test + real-data smoke test all shipped. Phase 2 chain proven to round-trip pydantic-valid JSON end-to-end in < 20 s.</done>
+  <done>scripts/run_full_chain_dummy.py + E2E integration test + real-data smoke test all shipped. Phase 2 chain proven to round-trip pydantic-valid JSON end-to-end in < 20 s, with PHYS-05 Deccan Plateau exclusion enforced per-frame.</done>
 </task>
 
 </tasks>
@@ -525,7 +541,7 @@ AOI bboxes (D-04, with +2° buffer merged into `lon [68, 92], lat [5, 22]`):
 
 <success_criteria>
 - PHYS-02: fetch_demo_env.py ships with fail-loud creds + correct dataset IDs + bbox
-- PHYS-05: real-data smoke test ready (runs when data fetched, skips cleanly otherwise)
+- PHYS-05: real-data smoke test ready (runs when data fetched, skips cleanly otherwise), with per-frame Deccan Plateau exclusion assertion enforcing "no Deccan crossings" gate
 - D-19 E2E driver + test prove the run_inference → forecast_drift → plan_mission chain works end-to-end
 - Phase 2 exit criteria (ROADMAP §Phase 2 success #4 and #5) both met
 </success_criteria>
