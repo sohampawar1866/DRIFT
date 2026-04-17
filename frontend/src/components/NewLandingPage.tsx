@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -7,8 +7,6 @@ import Lenis from 'lenis';
 import { Map, Satellite, Ship, Waves, type LucideIcon } from 'lucide-react';
 
 gsap.registerPlugin(ScrollTrigger);
-
-const TOTAL_FRAMES = 40;
 
 // Stagger helper for child animations
 const staggerContainer: Variants = {
@@ -25,12 +23,7 @@ const fadeUp: Variants = {
 
 export const NewLandingPage: React.FC = () => {
   const navigate = useNavigate();
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const sequenceRef = useRef<HTMLDivElement>(null);
-
-  const [images, setImages] = useState<HTMLImageElement[]>([]);
-  const [imagesLoaded, setImagesLoaded] = useState(false);
-  const [loadingProgress, setLoadingProgress] = useState(0);
 
   // Lenis smooth scroll
   useEffect(() => {
@@ -57,106 +50,6 @@ export const NewLandingPage: React.FC = () => {
       lenis.destroy();
     };
   }, []);
-
-  // Preload image sequence
-  useEffect(() => {
-    const loadedImages: HTMLImageElement[] = [];
-    let loadedCount = 0;
-    for (let i = 1; i <= TOTAL_FRAMES; i++) {
-      const img = new Image();
-      const index = i.toString().padStart(3, '0');
-      img.src = `/gallery1/ezgif-frame-${index}.jpg`;
-      img.onload = () => {
-        loadedCount++;
-        setLoadingProgress(Math.round((loadedCount / TOTAL_FRAMES) * 100));
-        if (loadedCount === TOTAL_FRAMES) { setImages(loadedImages); setImagesLoaded(true); }
-      };
-      img.onerror = () => {
-        loadedCount++;
-        setLoadingProgress(Math.round((loadedCount / TOTAL_FRAMES) * 100));
-        if (loadedCount === TOTAL_FRAMES) { setImages(loadedImages); setImagesLoaded(true); }
-      };
-      loadedImages.push(img);
-    }
-  }, []);
-
-  // Canvas + GSAP scroll-triggered frame animation
-  useEffect(() => {
-    if (!imagesLoaded || !canvasRef.current || !sequenceRef.current) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let cw = 0;
-    let ch = 0;
-    let rafId: number | null = null;
-    let queuedFrame = 0;
-
-    const setCanvasSize = () => {
-      const dpr = window.devicePixelRatio || 1;
-      const rect = canvas.getBoundingClientRect();
-      cw = rect.width;
-      ch = rect.height;
-      canvas.width = Math.round(cw * dpr);
-      canvas.height = Math.round(ch * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-    };
-
-    const render = (index: number) => {
-      const img = images[index];
-      if (!img || !img.complete || cw === 0 || ch === 0) return;
-      const iw = img.width;
-      const ih = img.height;
-      const scale = Math.max(cw / iw, ch / ih);
-      const nw = iw * scale, nh = ih * scale;
-      const ox = (cw - nw) / 2, oy = (ch - nh) / 2;
-      ctx.clearRect(0, 0, cw, ch);
-      ctx.drawImage(img, ox, oy, nw, nh);
-    };
-
-    const queueRender = (index: number) => {
-      queuedFrame = index;
-      if (rafId !== null) return;
-      rafId = window.requestAnimationFrame(() => {
-        render(queuedFrame);
-        rafId = null;
-      });
-    };
-
-    setCanvasSize();
-
-    queueRender(0);
-    const updateCanvasSize = () => {
-      setCanvasSize();
-      queueRender(Math.round(obj.frame));
-    };
-    window.addEventListener('resize', updateCanvasSize);
-
-    const obj = { frame: 0 };
-    const st = gsap.to(obj, {
-      frame: TOTAL_FRAMES - 1,
-      snap: 'frame',
-      ease: 'none',
-      scrollTrigger: {
-        trigger: sequenceRef.current,
-        start: 'top top',
-        end: '+=600%',
-        scrub: 1,
-        pin: true,
-        onUpdate: () => queueRender(Math.round(obj.frame)),
-      },
-    });
-
-    return () => {
-      window.removeEventListener('resize', updateCanvasSize);
-      if (rafId !== null) {
-        window.cancelAnimationFrame(rafId);
-      }
-      st.kill();
-    };
-  }, [imagesLoaded, images]);
 
   /* ──────────────────────── DATA ──────────────────────── */
 
@@ -224,26 +117,24 @@ export const NewLandingPage: React.FC = () => {
   return (
     <div className="bg-background min-h-screen text-text-main overflow-x-hidden selection:bg-primary/20 selection:text-text-main">
 
-      {/* Loading overlay */}
-      {!imagesLoaded && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background">
-          <span className="text-3xl font-jakarta font-light mb-4 text-text-main/50">Loading Experience</span>
-          <div className="w-64 h-1 bg-surface-variant rounded-full overflow-hidden">
-            <div className="h-full bg-primary transition-all duration-300" style={{ width: `${loadingProgress}%` }} />
-          </div>
-        </div>
-      )}
-
-      {/* ═══ HERO: IMAGE SEQUENCE ═══ */}
+      {/* ═══ HERO: VIDEO BACKGROUND ═══ */}
       <div ref={sequenceRef} className="relative w-full h-screen overflow-hidden bg-background">
-        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full object-cover" />
+        <video 
+          autoPlay 
+          loop 
+          muted 
+          playsInline 
+          className="absolute inset-0 w-full h-full object-cover"
+        >
+          <source src="/bg1.mp4" type="video/mp4" />
+        </video>
 
-        <div className="absolute inset-0 bg-black/35 z-10" />
+        <div className="absolute inset-0 bg-black/10 z-10" />
 
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent z-10" />
+        <div className="absolute inset-0 bg-linear-to-t from-gray via-transparent to-transparent z-10" />
 
         <div className="absolute top-10 left-4 md:top-16 md:left-16 z-20 pointer-events-none max-w-[92vw]">
-          <h1 className="type-display-hero font-jakarta font-bold tracking-tight text-white leading-none drop-shadow-md">
+          <h1 className="type-display-hero font-jakarta font-semibold tracking-tight text-white leading-none drop-shadow-md">
             D.R.I.F.T.
           </h1>
           <p className="text-[11px] sm:text-sm md:text-lg font-manrope tracking-[0.12em] sm:tracking-[0.2em] mt-3 md:mt-4 text-white/90 font-medium drop-shadow-sm">
@@ -262,13 +153,31 @@ export const NewLandingPage: React.FC = () => {
           <motion.div
             animate={{ y: [0, 10, 0] }}
             transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-            className="w-[1.5px] h-16 bg-gradient-to-b from-white to-transparent shadow-sm"
+            className="w-[1.5px] h-16 bg-linear-to-b from-white to-transparent shadow-sm"
           />
         </div>
       </div>
 
       {/* ═══ MAIN CONTENT ═══ */}
-      <main className="relative z-20 bg-background pt-32 pb-48 rounded-t-[3rem] -mt-[3rem] shadow-[0_-30px_60px_rgba(0,0,0,0.5)]">
+      <main className="relative z-20 bg-[#0D1417] pt-24 pb-48">
+        <style>
+          {`
+            @keyframes wave-scroll {
+              0% { transform: translateX(0); }
+              100% { transform: translateX(-50%); }
+            }
+            .animate-wave {
+              animation: wave-scroll 10s linear infinite;
+              will-change: transform;
+            }
+          `}
+        </style>
+        <div className="absolute top-0 left-0 w-full overflow-hidden leading-[0] transform -translate-y-full">
+          <svg className="relative block w-[200vw] h-[40px] sm:h-[60px] md:h-[80px] animate-wave" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2400 100" preserveAspectRatio="none">
+            <path d="M0,50 Q300,100 600,50 T1200,50 L1200,100 L0,100 Z" fill="#0D1417" />
+            <path d="M1200,50 Q1500,100 1800,50 T2400,50 L2400,100 L1200,100 Z" fill="#0D1417" />
+          </svg>
+        </div>
 
         {/* ── SECTION 1: THE PROBLEM ── */}
         <section className="max-w-5xl mx-auto px-6 mb-40">
@@ -302,7 +211,7 @@ export const NewLandingPage: React.FC = () => {
         </section>
 
         {/* ── KEY STATS BAR ── */}
-        <section className="max-w-5xl mx-auto px-6 mb-40">
+        <section className="max-w-6xl mx-auto px-6 mb-40">
           <motion.div
             className="grid grid-cols-2 md:grid-cols-4 gap-6"
             variants={staggerContainer}
