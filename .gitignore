@@ -1,27 +1,65 @@
-# Environment
+# =====================
+# Environment / Secrets
+# =====================
+.env
+.env.*
+!.env.example
+
+# =====================
+# Node.js / Frontend
+# =====================
+node_modules/
+dist/
+build/
+.cache/
+.parcel-cache/
+.vite/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+
+# =====================
+# Python / Backend
+# =====================
 venv/
 env/
 .venv/
-.env
-
-# Python
 __pycache__/
 *.pyc
 *.pyo
-*.pye
 *.pyd
-*.zip
 *.egg
 *.egg-info/
-dist/
-build/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+*.whl
 
+# =====================
 # OS specific
+# =====================
 .DS_Store
 Thumbs.db
+*.swp
+*.swo
+*~
 
-# Project Data / Over-sized files
+# =====================
+# IDE / Editor
+# =====================
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# =====================
+# Project Data / Large files
+# =====================
 data/
 backend/data/
 *.geojson
@@ -30,3 +68,4 @@ backend/data/
 *.tif
 *.tiff
 *.nc
+*.zip
