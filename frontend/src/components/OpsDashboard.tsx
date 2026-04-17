@@ -13,6 +13,7 @@ import api, {
   type ForecastFC,
   type MissionFC,
   type ExportFormat,
+  type AlertsResponse,
 } from '../lib/api';
 
 const INITIAL_VIEW_STATE = {
@@ -33,6 +34,7 @@ export const OpsDashboard: React.FC = () => {
   const [forecastData, setForecastData] = useState<ForecastFC | null>(null);
   const [missionData, setMissionData] = useState<MissionFC | null>(null);
   const [metricsData, setMetricsData] = useState<DashboardMetrics | null>(null);
+  const [alertsData, setAlertsData] = useState<AlertsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [timeSlider, setTimeSlider] = useState(24);
   const [generatingMission, setGeneratingMission] = useState<ExportFormat | null>(null);
@@ -93,12 +95,23 @@ export const OpsDashboard: React.FC = () => {
     }
   }, [aoi_id]);
 
+  const fetchAlerts = React.useCallback(async () => {
+    try {
+      if (!aoi_id) return;
+      setAlertsData(await api.alerts(aoi_id));
+    } catch (err) {
+      console.error('alerts:', apiErrorMessage(err));
+      setAlertsData(null);
+    }
+  }, [aoi_id]);
+
   useEffect(() => {
     if (!aoi_id) return;
     fetchDashboardMetrics();
     fetchDetection();
     fetchForecast(timeSlider);
     fetchMission();
+    fetchAlerts();
     
     // Dynamically update viewState center based on custom string or available AOIs
     if (aoi_id && aoi_id.startsWith('custom_')) {
@@ -119,7 +132,7 @@ export const OpsDashboard: React.FC = () => {
         }
       }).catch((err) => console.error('aois:', apiErrorMessage(err)));
     }
-  }, [aoi_id, fetchDashboardMetrics, fetchDetection, fetchForecast, fetchMission]);
+  }, [aoi_id, fetchDashboardMetrics, fetchDetection, fetchForecast, fetchMission, fetchAlerts]);
 
   const handleExportMission = (format: ExportFormat) => {
     if (!aoi_id) return;
@@ -163,6 +176,18 @@ export const OpsDashboard: React.FC = () => {
       lineWidthMinPixels: 3,
       stroked: true,
       filled: false,
+      pickable: true,
+    }),
+
+    // OceanTrace: deposition heatmap (landfall impact zones, red hue)
+    metricsData?.deposition_heatmap && new GeoJsonLayer({
+      id: 'deposition-heatmap',
+      data: metricsData.deposition_heatmap as any,
+      getFillColor: [239, 68, 68, 130],
+      getLineColor: [220, 38, 38, 255],
+      stroked: true,
+      filled: true,
+      lineWidthMinPixels: 2,
       pickable: true,
     })
   ].filter(Boolean);
@@ -229,6 +254,34 @@ export const OpsDashboard: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {metricsData?.live_environment && (
+            <div style={{ background: '#272c35', borderRadius: '8px', padding: isMobile ? '0.75rem' : '1rem', border: '1px solid #38404d', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>SST</div>
+                <div style={{ fontSize: '1.25rem', color: '#f59e0b', fontWeight: 'bold' }}>{metricsData.live_environment.sst_c.toFixed(1)}°C</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>Chl-a</div>
+                <div style={{ fontSize: '1.25rem', color: '#10b981', fontWeight: 'bold' }}>{metricsData.live_environment.chl_mg_m3.toFixed(2)} <span style={{ fontSize: '0.65rem', color: '#94a3b8' }}>mg/m³</span></div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>Class</div>
+                <div style={{ fontSize: '0.85rem', color: '#06b6d4', fontWeight: 'bold', marginTop: '0.4rem' }}>{metricsData.live_environment.predicted_class}</div>
+              </div>
+            </div>
+          )}
+
+          {alertsData && alertsData.alerts && alertsData.alerts.length > 0 && (
+            <div style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.5)', borderRadius: '8px', padding: '0.75rem 1rem' }}>
+              <h4 style={{ margin: '0 0 0.4rem 0', color: '#ef4444', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>⚠ Coastal Alerts ({alertsData.alerts.length})</h4>
+              {alertsData.alerts.slice(0, 3).map((a) => (
+                <div key={a.segment_id} style={{ fontSize: '0.75rem', color: '#fecaca', fontFamily: 'monospace' }}>
+                  [{a.severity.toUpperCase()}] {a.centroid[1].toFixed(2)}°N, {a.centroid[0].toFixed(2)}°E — {a.hit_count} hits
+                </div>
+              ))}
+            </div>
+          )}
+
           <div style={{ background: '#272c35', borderRadius: '8px', padding: isMobile ? '1rem' : '1.5rem', border: '1px solid #38404d', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.2)' }}>
             <h3 style={{ margin: '0 0 1rem 0', color: '#e2e8f0', fontWeight: 'bold' }}>RADAR LOGS</h3>
             
@@ -263,6 +316,27 @@ export const OpsDashboard: React.FC = () => {
               )}
             </div>
           </div>
+
+          {metricsData?.summary && (
+            <div style={{ background: '#272c35', borderRadius: '8px', padding: isMobile ? '0.75rem' : '1rem', border: '1px solid #38404d', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>Patches</div>
+                <div style={{ fontSize: '1.25rem', color: '#f59e0b', fontWeight: 'bold' }}>{metricsData.summary.total_patches}</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>Avg Conf</div>
+                <div style={{ fontSize: '1.25rem', color: '#10b981', fontWeight: 'bold' }}>{(metricsData.summary.avg_confidence * 100).toFixed(0)}%</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>Total Area</div>
+                <div style={{ fontSize: '1rem', color: '#06b6d4', fontWeight: 'bold' }}>{(metricsData.summary.total_area_sq_meters / 1e6).toFixed(2)} km²</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>High-Pri</div>
+                <div style={{ fontSize: '1.25rem', color: '#ef4444', fontWeight: 'bold' }}>{metricsData.summary.high_priority_targets}</div>
+              </div>
+            </div>
+          )}
 
           <div style={{ background: '#272c35', borderRadius: '8px', padding: isMobile ? '1rem' : '1.5rem', border: '1px solid #38404d', flexGrow: 1, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.2)' }}>
             <h3 style={{ margin: '0 0 1.5rem 0', color: '#e2e8f0', fontWeight: 'bold' }}><BarChart2 size={18} style={{ marginRight: '8px', verticalAlign: 'middle', color: '#10b981' }} /> PLASTIC DEGRADATION MODEL</h3>

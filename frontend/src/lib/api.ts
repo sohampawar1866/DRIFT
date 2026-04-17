@@ -72,6 +72,29 @@ export interface DashboardMetrics {
     high_priority_targets: number;
   };
   biofouling_chart_data: Array<{ age_days: number; simulated_confidence: number }>;
+  live_environment?: {
+    sst_c: number;
+    chl_mg_m3: number;
+    predicted_class: string;
+  };
+  deposition_heatmap?: GeoJSON.FeatureCollection;
+}
+
+export interface AlertEntry {
+  segment_id: string;
+  centroid: [number, number];
+  hit_count: number;
+  severity: 'low' | 'elevated' | 'critical';
+  aoi_id?: string | null;
+  timestamp?: string | null;
+}
+
+export interface AlertsResponse {
+  alerts: AlertEntry[];
+  deposited_count?: number;
+  dispatch_report?: { dispatched: number; logged: number; alerts: number };
+  degraded?: boolean;
+  reason?: string;
 }
 
 export interface SearchRecord {
@@ -131,6 +154,13 @@ export function snapForecastHours(h: number): ForecastHours {
   );
 }
 
+export async function alerts(aoi_id: string): Promise<AlertsResponse> {
+  const res = await client.get<AlertsResponse>('/api/v1/alerts', {
+    params: { aoi_id },
+  });
+  return res.data;
+}
+
 export async function trackerCoastline(): Promise<GeoJSON.FeatureCollection> {
   const res = await client.get<GeoJSON.FeatureCollection>('/api/v1/tracker/coastline');
   return res.data;
@@ -164,6 +194,7 @@ const api = {
   forecast,
   mission,
   dashboardMetrics,
+  alerts,
   exportUrl,
   snapForecastHours,
   trackerCoastline,
