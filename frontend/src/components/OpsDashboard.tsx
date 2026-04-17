@@ -30,9 +30,47 @@ export const OpsDashboard: React.FC = () => {
   const [timeSlider, setTimeSlider] = useState(24);
   const [generatingMission, setGeneratingMission] = useState(false);
 
+  const fetchDetection = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get(`${API_BASE_URL}/api/v1/detect?aoi_id=${aoi_id}`);
+      setDetectionData(res.data);
+    } catch (err) {
+      console.error('Error fetching detect data', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [aoi_id]);
+
+  const fetchForecast = React.useCallback(async () => {
+    if (timeSlider === 0) {
+      setForecastData(null);
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await axios.get(`${API_BASE_URL}/api/v1/forecast?aoi_id=${aoi_id}&hours=${timeSlider}`);
+      setForecastData(res.data);
+    } catch (err) {
+      console.error('Error fetching forecast data', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [aoi_id, timeSlider]);
+
+  const fetchDashboardMetrics = React.useCallback(async () => {
+    try {
+      const res = await axios.get(`${API_BASE_URL}/api/v1/dashboard/metrics?aoi_id=${aoi_id}`);
+      setMetricsData(res.data);
+    } catch (err) {
+      console.error('Error fetching metrics', err);
+    }
+  }, [aoi_id]);
+
   useEffect(() => {
     fetchDashboardMetrics();
     fetchDetection();
+    fetchForecast();
     
     // Dynamically update viewState center based on custom string or available AOIs
     if (aoi_id && aoi_id.startsWith('custom_')) {
@@ -53,44 +91,7 @@ export const OpsDashboard: React.FC = () => {
         }
       }).catch(err => console.error(err));
     }
-  }, [aoi_id]);
-
-  const fetchDetection = async () => {
-    setLoading(true);
-    try {
-      const res = await axios.get(`${API_BASE_URL}/api/v1/detect?aoi_id=${aoi_id}`);
-      setDetectionData(res.data);
-    } catch (err) {
-      console.error('Error fetching detect data', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchForecast = async () => {
-    if (timeSlider === 0) {
-      setForecastData(null);
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await axios.get(`${API_BASE_URL}/api/v1/forecast?aoi_id=${aoi_id}&hours=${timeSlider}`);
-      setForecastData(res.data);
-    } catch (err) {
-      console.error('Error fetching forecast data', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchDashboardMetrics = async () => {
-    try {
-      const res = await axios.get(`${API_BASE_URL}/api/v1/dashboard/metrics?aoi_id=${aoi_id}`);
-      setMetricsData(res.data);
-    } catch (err) {
-      console.error('Error fetching metrics', err);
-    }
-  };
+  }, [aoi_id, fetchDashboardMetrics, fetchDetection, fetchForecast]);
 
   const handleExportMission = () => {
     setGeneratingMission(true);
