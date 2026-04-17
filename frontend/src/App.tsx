@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { DRIFT_ROUTE_CONFIG } from './config/driftRouteConfig';
+import ErrorBoundary from './components/ErrorBoundary';
 import './App.css';
 
 const NewLandingPage = lazy(() => import('./components/NewLandingPage').then((mod) => ({ default: mod.NewLandingPage })));
@@ -27,6 +28,7 @@ function App() {
   return (
     <Router>
       <div className="app-container" style={{ width: '100%', height: '100vh', margin: 0, padding: 0 }}>
+        <ErrorBoundary>
         <Suspense fallback={<Loader />}>
           <Routes>
             <Route path="/" element={<NewLandingPage />} />
@@ -42,6 +44,7 @@ function App() {
             </Route>
           </Routes>
         </Suspense>
+        </ErrorBoundary>
       </div>
     </Router>
   );
