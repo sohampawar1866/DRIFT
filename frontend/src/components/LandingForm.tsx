@@ -196,8 +196,15 @@ export const LandingForm: React.FC = () => {
         setCurrentSelection(null);
         // We comment out navigate so the user hits the UX they asked for ("on spot popup")
         // navigate(`/drift/aoi/${customAoiId}`);
-      } catch (err) {
+      } catch (err: any) {
         console.error(err);
+        if (err.response && err.response.data && err.response.data.detail) {
+          alert(err.response.data.detail);
+        } else {
+          alert("Error deploying sector. Please try an oceanic location.");
+        }
+        setDrawingPoints([]);
+        setCurrentSelection(null);
       }
     }
   };
