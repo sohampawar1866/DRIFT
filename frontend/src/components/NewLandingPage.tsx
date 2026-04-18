@@ -5,7 +5,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { motion, type Variants } from 'framer-motion';
 import Lenis from 'lenis';
 import { Map, Satellite, Ship, Waves, type LucideIcon } from 'lucide-react';
-
+import CurvedLoop from './CurvedLoop';
 gsap.registerPlugin(ScrollTrigger);
 
 // Stagger helper for child animations
@@ -24,6 +24,10 @@ const fadeUp: Variants = {
 export const NewLandingPage: React.FC = () => {
   const navigate = useNavigate();
   const sequenceRef = useRef<HTMLDivElement>(null);
+  const vid1Ref = useRef<HTMLDivElement>(null);
+  const vid2Ref = useRef<HTMLDivElement>(null);
+  const vid3Ref = useRef<HTMLDivElement>(null);
+  const vid4Ref = useRef<HTMLDivElement>(null);
 
   // Lenis smooth scroll
   useEffect(() => {
@@ -49,6 +53,91 @@ export const NewLandingPage: React.FC = () => {
       gsap.ticker.remove(update);
       lenis.destroy();
     };
+  }, []);
+
+  // NEW SCROLL SEQUENCE
+  useEffect(() => {
+    if (!sequenceRef.current || !vid1Ref.current || !vid2Ref.current || !vid3Ref.current || !vid4Ref.current) return;
+
+    let ctx = gsap.context(() => {
+      // Initialize states to strictly top-left edge anchoring and wire properties to GPU layer to make it buttery smooth
+      gsap.set([vid1Ref.current, vid2Ref.current, vid3Ref.current, vid4Ref.current], {
+        top: "0%",
+        left: "0%",
+        width: "100%",
+        height: "100%",
+        borderRadius: "0px",
+        xPercent: 0,
+        yPercent: 0,
+        x: 0,
+        y: 0,
+        willChange: "transform, width, height, top, left, border-radius"
+      });
+      gsap.set([vid2Ref.current, vid3Ref.current, vid4Ref.current], { opacity: 0 });
+
+      const tl = gsap.timeline({
+        scrollTrigger: {
+          trigger: sequenceRef.current,
+          start: "top top",
+          end: "+=300%",
+          scrub: 1,
+          pin: true,
+        }
+      });
+
+      // Fade out the scroll hint immediately
+      tl.to(".scroll-indicator", { opacity: 0, duration: 0.1 }, 0);
+
+      // Phase 1: Vid 1 shrinks precisely to top right corner
+      tl.to(vid1Ref.current, {
+        width: "38%",
+        height: "35%",
+        top: "5%",
+        left: "58%",
+        borderRadius: "24px",
+        ease: "power2.inOut",
+        duration: 1
+      }, 0)
+      
+      // Phase 2: Vid 2 fades in and shrinks strictly to Center Right
+      .to(vid2Ref.current, { opacity: 1, duration: 0.15 })
+      .to(vid2Ref.current, {
+        width: "22%",
+        height: "30%", 
+        top: "45%",
+        left: "75%",
+        borderRadius: "24px",
+        ease: "power2.inOut",
+        duration: 1
+      })
+      
+      // Phase 3: Vid 3 fades in and sinks to Bottom Left
+      .to(vid3Ref.current, { opacity: 1, duration: 0.15 })
+      .to(vid3Ref.current, {
+        width: "26%",
+        height: "50%", 
+        top: "45%",
+        left: "6%",
+        borderRadius: "20px",
+        ease: "power2.inOut",
+        duration: 1
+      })
+      
+      // Phase 4: Vid 4 fades in and anchors purely top-center layout coordinates
+      .to(vid4Ref.current, { opacity: 1, duration: 0.15 })
+      .to(vid4Ref.current, {
+        width: "32%",
+        height: "30%",
+        top: "41%",
+        left: "34%",
+        borderRadius: "24px",
+        ease: "power2.inOut",
+        duration: 1
+      });
+
+    }, sequenceRef);
+
+    return () => ctx.revert();
   }, []);
 
   /* ──────────────────────── DATA ──────────────────────── */
@@ -115,59 +204,70 @@ export const NewLandingPage: React.FC = () => {
   /* ──────────────────────── RENDER ──────────────────────── */
 
   return (
-    <div className="bg-background min-h-screen text-text-main overflow-x-hidden selection:bg-primary/20 selection:text-text-main">
+    <div className="bg-background2 min-h-screen text-text-main overflow-x-hidden selection:bg-primary/20 selection:text-text-main">
 
-      {/* ═══ HERO: VIDEO BACKGROUND ═══ */}
-      <div ref={sequenceRef} className="relative w-full h-screen overflow-hidden bg-background">
-        <video 
-          autoPlay 
-          loop 
-          muted 
-          playsInline 
-          className="absolute inset-0 w-full h-full object-cover"
-        >
-          <source src="/background.mp4" type="video/mp4" />
-        </video>
-
-        <div className="absolute inset-0 bg-black/10 z-10" />
-
-        <div className="absolute inset-0 bg-linear-to-t from-gray via-transparent to-transparent z-10" />
-
-        <div className="absolute top-10 left-4 md:top-16 md:left-16 z-20 pointer-events-none max-w-[92vw]">
-          <h1 className="type-display-hero font-jakarta font-semibold tracking-tight text-white leading-none drop-shadow-md">
-            D.R.I.F.T.
+      {/* ═══ HERO: OVERLAPPING LAYOUT ═══ */}
+      <div ref={sequenceRef} className="relative w-full h-[100svh] overflow-hidden bg-[#0D1417] z-20">
+        
+        {/* TOP LEFT HUGE TEXT */}
+        <div className="absolute top-8 left-6 md:top-12 md:left-12 lg:left-16 z-10 pointer-events-none">
+          <h1 className="text-[22vw] md:text-[16vw] lg:text-[14vw] leading-[0.8] font-jakarta font-bold text-white tracking-[0.01em] uppercase select-none opacity-95">
+            DRI<span className="tracking-[0.04em]">F</span>T
           </h1>
-          <p className="text-[11px] sm:text-sm md:text-lg font-manrope tracking-[0.12em] sm:tracking-[0.2em] mt-3 md:mt-4 text-white/90 font-medium drop-shadow-sm">
-            Debris Recognition, Imaging & Forecast Trajectory
+        </div>
+
+        {/* BOTTOM RIGHT SUBTITLE */}
+        <div className="absolute bottom-12 right-6 md:bottom-16 md:right-12 lg:right-16 z-10 pointer-events-none">
+          <p className="text-[5vw] md:text-[3.2vw] lg:text-[2.4rem] font-manrope font-light text-white/80 leading-[1.1] text-right tracking-[0.01em] max-w-[70vw]">
+            Debris Recognition,<br />Imaging & Forecast Trajectory
           </p>
         </div>
 
-        <div className="absolute bottom-24 left-4 right-4 md:left-16 md:right-auto z-20 pointer-events-none max-w-xl">
-          <p className="text-sm sm:text-base md:text-xl font-manrope font-light leading-relaxed text-white/85 drop-shadow-sm">
-            An AI-powered ocean surveillance platform that detects marine plastic debris from satellite imagery, forecasts its drift path, and plans optimal cleanup missions.
-          </p>
+        {/* THE 4 SCATTERED VIDEOS (Controlled by GSAP) */}
+        <div ref={vid1Ref} className="absolute z-[20] overflow-hidden shadow-[0_20px_20px_rgba(0,0,0,0.4)] border border-white/5 pointer-events-none top-0 left-0 w-full h-full">
+          <video autoPlay loop muted playsInline className="w-full h-full object-cover">
+            <source src="/background.mp4" type="video/mp4" />
+          </video>
+        </div>
+        
+        <div ref={vid2Ref} className="absolute z-[21] overflow-hidden shadow-[0_20px_20px_rgba(0,0,0,0.4)] border border-white/5 pointer-events-none top-0 left-0 w-full h-full opacity-0">
+          <video autoPlay loop muted playsInline className="w-full h-full object-cover">
+            <source src="/drift_video.mp4" type="video/mp4" />
+          </video>
         </div>
 
-        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-80 z-20 pointer-events-none">
-          <span className="text-[11px] uppercase tracking-[0.3em] font-manrope mb-4 text-white drop-shadow-md">Scroll to explore</span>
+        <div ref={vid3Ref} className="absolute z-[22] overflow-hidden shadow-[0_20px_20px_rgba(0,0,0,0.4)] border border-white/5 pointer-events-none top-0 left-0 w-full h-full opacity-0">
+          <video autoPlay loop muted playsInline className="w-full h-full object-cover">
+            <source src="/drift_video_2.mp4" type="video/mp4" />
+          </video>
+        </div>
+
+        <div ref={vid4Ref} className="absolute z-[23] overflow-hidden shadow-[0_20px_20px_rgba(0,0,0,0.4)] border border-white/5 pointer-events-none top-0 left-0 w-full h-full opacity-0">
+          <video autoPlay loop muted playsInline className="w-full h-full object-cover">
+            <source src="/drift_video_3.mp4" type="video/mp4" />
+          </video>
+        </div>
+
+        {/* Optional scroll hint */}
+        <div className="scroll-indicator absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center opacity-40 z-30 pointer-events-none hidden md:flex">
           <motion.div
-            animate={{ y: [0, 10, 0] }}
+            animate={{ y: [0, 8, 0] }}
             transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-            className="w-[1.5px] h-16 bg-linear-to-b from-white to-transparent shadow-sm"
+            className="w-[1px] h-12 bg-linear-to-b from-white to-transparent"
           />
         </div>
       </div>
 
       {/* ═══ MAIN CONTENT ═══ */}
-      <main className="relative z-20 bg-[#0D1417] pt-24 pb-48">
-        <style>
+      <main className="relative z-20 bg-[#0D1417] pt-6 pb-">
+        {/* <style>
           {`
             @keyframes wave-scroll {
               0% { transform: translateX(0); }
               100% { transform: translateX(-50%); }
             }
             .animate-wave {
-              animation: wave-scroll 10s linear infinite;
+              animation: wave-scroll 3s linear infinite;
               will-change: transform;
             }
           `}
@@ -177,7 +277,7 @@ export const NewLandingPage: React.FC = () => {
             <path d="M0,50 Q300,100 600,50 T1200,50 L1200,100 L0,100 Z" fill="#0D1417" />
             <path d="M1200,50 Q1500,100 1800,50 T2400,50 L2400,100 L1200,100 Z" fill="#0D1417" />
           </svg>
-        </div>
+        </div> */}
 
         {/* ── SECTION 1: THE PROBLEM ── */}
         <section className="max-w-5xl mx-auto px-6 mb-40">
@@ -233,7 +333,7 @@ export const NewLandingPage: React.FC = () => {
         </section>
 
         {/* ── FINAL CTA ── */}
-        <section className="flex flex-col justify-center items-center text-center max-w-3xl mx-auto px-4 md:px-6 mb-28 md:mb-40">
+        <section className="flex flex-col justify-center items-center text-center max-w-3xl mx-auto px-4 md:px-6 mb-28 md:mb-1">
           <motion.div
             initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -274,6 +374,18 @@ export const NewLandingPage: React.FC = () => {
             </div>
           </motion.div>
         </section>
+
+        {/* ── CURVED LOOP MARQUEE ── */}
+        <section className="w-full -mt-10 mb-20 overflow-hidden relative z-10 pointer-events-auto">
+          <CurvedLoop 
+            marqueeText="Save The Ocean ✦ "
+            speed={2.5}
+            curveAmount={350}
+            direction="left"
+            interactive={true}
+            className="font-jakarta tracking-wide text-primary fill-primary"
+          />
+        </section>  
 
         {/* ── SECTION 2: PLATFORM FEATURES ── */}
         <section className="max-w-5xl mx-auto px-6 mb-40">
