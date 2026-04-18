@@ -81,7 +81,7 @@ export const LandingForm: React.FC = () => {
   const [currentSelection, setCurrentSelection] = useState<TurfPolygonFeature | null>(null);
   const [processingSelection, setProcessingSelection] = useState<TurfPolygonFeature | null>(null);
 
-  const [coastalGeoJson, setCoastalGeoJson] = useState<CoastlineCollection>({ type: 'FeatureCollection', features: [] });
+  const [coastalGeoJson, setCoastalGeoJson] = useState<CoastlineCollection | null>(null);
   const [searchHistory, setSearchHistory] = useState<SearchRecord[]>([]);
   const [hoverInfo, setHoverInfo] = useState<{ lng: number, lat: number, x: number, y: number, hasObject: boolean } | null>(null);
 
@@ -135,7 +135,7 @@ export const LandingForm: React.FC = () => {
 
   const layers = [
     // --- COASTAL VULNERABILITY (JAGGED EXACT BORDERS) ---
-    new GeoJsonLayer({
+    coastalGeoJson && new GeoJsonLayer({
       id: 'coastal-risk',
       data: coastalGeoJson,
       stroked: true,

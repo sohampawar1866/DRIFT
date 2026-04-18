@@ -70,6 +70,7 @@ def _resolve_checkpoint_path(cfg: Settings) -> Path:
 
 
 def load_weights(cfg: Settings) -> nn.Module:
+    import json
     source = cfg.ml.weights_source
     if source != "our_real":
         raise ValueError(
@@ -88,6 +89,17 @@ def load_weights(cfg: Settings) -> nn.Module:
     sd = _strip_model_prefix(sd)
 
     prediction_threshold = _checkpoint_threshold(raw)
+
+    metrics_path = ckpt_path.parent / "metrics.json"
+    if metrics_path.exists():
+        try:
+            with metrics_path.open("r", encoding="utf-8") as f:
+                metrics_data = json.load(f)
+                if "best_threshold" in metrics_data:
+                    prediction_threshold = float(metrics_data["best_threshold"])
+        except Exception as e:
+            print(f"Warning: Failed to read best_threshold from {metrics_path}: {e}")
+
     model = OurRealUNetPP(
         in_channels=cfg.ml.in_channels,
         prediction_threshold=prediction_threshold,

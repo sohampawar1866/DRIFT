@@ -1,8 +1,8 @@
 ml:
   weights_source: our_real
-  checkpoint_path: backend/ml/checkpoints/our_real.pth
+  checkpoint_path: backend/ml/checkpoints/our_real.pt
   kagglehub_handle: manastiwari1410/drift-unetpp/pytorch/v1
-  confidence_threshold: 0.5
+  confidence_threshold: 0.3
   min_area_m2: 200.0
   patch_size: 256
   stride: 128
