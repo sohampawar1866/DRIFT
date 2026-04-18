@@ -93,11 +93,20 @@ def load_weights(cfg: Settings) -> nn.Module:
         sd = _unwrap_checkpoint(raw)
         sd = _strip_module_prefix(sd)
 
-        model = DualHeadUNetpp(in_channels=cfg.ml.in_channels)
+        # Detect checkpoint format: v4 = GroupNorm (no running_mean/var keys),
+        # v3 and earlier = BatchNorm (running_mean/var present).
+        has_running_stats = any(
+            k.endswith("running_mean") or k.endswith("running_var") for k in sd.keys()
+        )
+        is_groupnorm_ckpt = not has_running_stats
+
+        model = DualHeadUNetpp(in_channels=cfg.ml.in_channels,
+                               use_groupnorm=is_groupnorm_ckpt)
         missing, unexpected = model.load_state_dict(sd, strict=False)
         if missing or unexpected:
             raise RuntimeError(
                 "State-dict key mismatch:\n"
+                f"  ckpt format: {'GroupNorm (v4)' if is_groupnorm_ckpt else 'BatchNorm (v3)'}\n"
                 f"  missing ({len(missing)}): {list(missing)[:10]}\n"
                 f"  unexpected ({len(unexpected)}): {list(unexpected)[:10]}\n"
                 "Training script's model class does not match "
