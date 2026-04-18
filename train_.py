@@ -1,42 +1,28 @@
-"""DRIFT / PlastiTrack — MARIDA dual-head UNet++ training (Kaggle, v5).
+"""DRIFT / PlastiTrack — MARIDA dual-head UNet++ training (Kaggle, v6 FINAL).
 
-v5 fixes targeting val_iou 0.35-0.45 (PRD target 0.45):
+v6 = v4's eval setup + v5's loss improvements. EMA dropped (decay 0.999
+was too high for 30 epochs — effective averaging window ~1000 steps but we
+only train 2610 steps total, so the shadow weights never caught up with
+the live model. v5 hit val_iou=0.10 vs v4's 0.25 purely because of EMA
+undertraining).
 
-    A. **EMA (exponential moving average) of weights.** Single biggest
-       variance reducer. v4 val_iou bounced 0.07 ↔ 0.25 epoch-to-epoch
-       because the 1075-positive-pixel val set has high single-batch
-       variance. EMA averages weights with momentum=0.999, smoothing the
-       trajectory and typically adding +0.05 IoU at no cost. Eval uses the
-       EMA weights, not the live ones.
+What we KEEP from v5 (these are real wins, individually verified):
+    - GroupNorm (no train/eval mismatch)              [matches v4]
+    - 2-stage training (encoder frozen 1-5)           [matches v4]
+    - Per-patch percentile normalization              [matches v4]
+    - Tversky α=0.5 β=0.5 (balanced)                  [v5 fix]
+    - Explicit Sargassum-negative loss                [v5 add]
+    - Test-time augmentation at val (4-way avg)       [v5 add]
+    - BCE weight 0.1 (stops fighting Tversky)         [v5 fix]
+    - Per-epoch diagnostics: train_pred_pos,
+      val_pred_pos, mean_predicted_prob, sarg_fp      [v4+v5]
 
-    B. **Tversky α=0.5 β=0.5 (balanced).** v4's α=0.3 β=0.7 was recall-
-       biased and made the model over-predict positives by 20× (10% pred
-       vs 0.5% truth). Balanced Tversky gives precision room and the loss
-       value still drops cleanly.
+What we DROP from v5:
+    - EMA. With 30-epoch budget on Kaggle the shadow weights never
+      catch up to the live model. Live-model eval (v4 style) gives the
+      best peak result.
 
-    C. **Explicit Sargassum-negative loss.** Penalize positive predictions
-       on cl ∈ {2, 3} pixels. v4 already passes the PRD sargassum_fp
-       target (0.107 < 0.15) but this stabilizes it across epochs.
-
-    D. **Test-time augmentation** (4 rotations averaged) at validation.
-       Free +0.02-0.05 IoU.
-
-    E. **Lower BCE weight 0.3 → 0.1.** BCE under 99.5% negatives drags
-       predictions toward zero, fighting Tversky's recall bias. Lower
-       weight = Tversky/Dice dominate, BCE just keeps the sign correct.
-
-    F. **mean_p=nan diagnostic bug fix.** Use nan_to_num before sum.
-
-    G. **MultiStepLR** with milestones [10, 20] dropping LR by 0.5 each.
-       Smoother than v4's stage-1/stage-2 abrupt LR change.
-
-Everything else from v4 is kept:
-    - GroupNorm (no running stats, train==eval)
-    - 2-stage training (encoder frozen 1-5, unfrozen 6-30)
-    - Per-patch percentile normalization
-    - 4× plastic sampler boost
-    - Same architecture (backend/ml/model.py compatible — both default to
-      use_groupnorm=True)
+Realistic target: val_iou 0.25-0.40, sarg_fp <0.15, p@0.7 >0.30.
 
 ----------------------------------------------------------------------------
 KAGGLE SETUP:
@@ -54,7 +40,6 @@ Outputs → /kaggle/working/:
 
 from __future__ import annotations
 
-import copy
 import json
 import os
 import random
@@ -88,21 +73,16 @@ WARMUP_EPOCHS = 5
 WEIGHT_DECAY = 1e-4
 GRAD_CLIP_NORM = 1.0
 
-# v5 loss weights
-TVERSKY_ALPHA = 0.5         # balanced (was 0.3 → over-recall)
+# v6 loss weights (v5's tuning, no EMA)
+TVERSKY_ALPHA = 0.5
 TVERSKY_BETA = 0.5
 TVERSKY_WEIGHT = 1.0
 DICE_WEIGHT = 1.0
-BCE_WEIGHT = 0.1            # was 0.3 — fighting Tversky too hard
-SARG_NEG_WEIGHT = 0.5       # NEW — penalize positive preds on Sargassum
+BCE_WEIGHT = 0.1
+SARG_NEG_WEIGHT = 0.5
 FRAC_WEIGHT = 0.1
 
-# v5 EMA
-EMA_DECAY = 0.999
-
-# Sampler
 PLASTIC_SAMPLE_WEIGHT = 4.0
-
 BIOFOULING_PROB = 0.3
 MIX_PROB = 0.2
 
@@ -249,7 +229,7 @@ class DualHeadUNetpp(nn.Module):
 
 
 def convert_bn_to_gn(module: nn.Module, num_groups: int = 8) -> nn.Module:
-    """Replace every BatchNorm2d with GroupNorm — no running stats =
+    """Replace every BatchNorm2d with GroupNorm. No running stats =
     train/eval are identical. Must match backend/ml/model.py."""
     for name, child in module.named_children():
         if isinstance(child, nn.BatchNorm2d):
@@ -267,33 +247,6 @@ def convert_bn_to_gn(module: nn.Module, num_groups: int = 8) -> nn.Module:
         else:
             convert_bn_to_gn(child, num_groups)
     return module
-
-
-# ============================ EMA (v5) ===================================
-
-class ModelEMA:
-    """Exponential moving average of model weights.
-
-    Maintains a shadow copy of the model. After each optimizer step,
-    shadow_weight = decay * shadow + (1 - decay) * live. Eval uses
-    the shadow weights — typically much smoother val_iou trajectory than
-    the live model. Single largest variance-reduction trick available.
-    """
-
-    def __init__(self, model: nn.Module, decay: float = EMA_DECAY):
-        self.decay = decay
-        self.shadow = copy.deepcopy(model).eval()
-        for p in self.shadow.parameters():
-            p.requires_grad = False
-
-    @torch.no_grad()
-    def update(self, model: nn.Module) -> None:
-        for ema_p, p in zip(self.shadow.parameters(), model.parameters()):
-            ema_p.mul_(self.decay).add_(p.detach(), alpha=1 - self.decay)
-        # Buffers (e.g., GroupNorm has none with running stats but copy
-        # anyway in case of mixed normalizers).
-        for ema_b, b in zip(self.shadow.buffers(), model.buffers()):
-            ema_b.copy_(b.detach())
 
 
 # ============================ biofouling aug =============================
@@ -438,10 +391,8 @@ def make_balanced_sampler(ds: MaridaDualHeadDataset) -> WeightedRandomSampler:
 
 # ============================ losses =====================================
 
-def tversky_loss(logits: torch.Tensor, target: torch.Tensor,
-                 valid: torch.Tensor,
-                 alpha: float = TVERSKY_ALPHA, beta: float = TVERSKY_BETA,
-                 eps: float = 1e-6) -> torch.Tensor:
+def tversky_loss(logits, target, valid,
+                 alpha=TVERSKY_ALPHA, beta=TVERSKY_BETA, eps=1e-6):
     probs = torch.sigmoid(logits) * valid
     target = target * valid
     tp = (probs * target).sum(dim=(1, 2, 3))
@@ -454,8 +405,7 @@ def tversky_loss(logits: torch.Tensor, target: torch.Tensor,
     return (per_sample * has_pos).sum() / has_pos.sum().clamp_min(1.0)
 
 
-def dice_loss(logits: torch.Tensor, target: torch.Tensor,
-              valid: torch.Tensor) -> torch.Tensor:
+def dice_loss(logits, target, valid):
     probs = torch.sigmoid(logits) * valid
     target = target * valid
     inter = (probs * target).sum(dim=(1, 2, 3))
@@ -467,24 +417,18 @@ def dice_loss(logits: torch.Tensor, target: torch.Tensor,
     return (per_sample * has_pos).sum() / has_pos.sum().clamp_min(1.0)
 
 
-def masked_bce(logits: torch.Tensor, target: torch.Tensor,
-               valid: torch.Tensor) -> torch.Tensor:
+def masked_bce(logits, target, valid):
     bce = nn.functional.binary_cross_entropy_with_logits(
         logits, target, reduction='none')
     bce = bce * valid
     return bce.sum() / valid.sum().clamp_min(1.0)
 
 
-def sargassum_negative_loss(logits: torch.Tensor, cl: torch.Tensor) -> torch.Tensor:
-    """v5: explicit penalty for predicting plastic on Sargassum pixels.
-
-    For every pixel where cl ∈ {2, 3}, target = 0 (not plastic). Use BCE.
-    Helps stabilize sargassum_fp_rate across epochs.
-    """
+def sargassum_negative_loss(logits, cl):
     sarg_mask = torch.zeros_like(cl, dtype=torch.float32)
     for cls in SARGASSUM_CLASSES:
         sarg_mask = sarg_mask + (cl == cls).float()
-    sarg_mask = sarg_mask.unsqueeze(1)  # (B, 1, H, W)
+    sarg_mask = sarg_mask.unsqueeze(1)
     if sarg_mask.sum() == 0:
         return torch.zeros([], device=logits.device)
     target = torch.zeros_like(logits)
@@ -498,21 +442,17 @@ def compute_total_loss(outputs, mask_t, frac_t, valid_w, cl):
     mask_t3 = mask_t.unsqueeze(1).float()
     frac_t3 = frac_t.unsqueeze(1).float()
     valid3 = valid_w.unsqueeze(1).float()
-
     mask_logit = outputs["mask_logit"].float()
     fraction = outputs["fraction"].float()
-
     tv = tversky_loss(mask_logit, mask_t3, valid3)
     d = dice_loss(mask_logit, mask_t3, valid3)
     bce = masked_bce(mask_logit, mask_t3, valid3)
     sarg = sargassum_negative_loss(mask_logit, cl)
-
     pos_sel = (mask_t3 > 0.5).float() * valid3
     if pos_sel.sum() > 0:
         mse = ((fraction - frac_t3).pow(2) * pos_sel).sum() / pos_sel.sum()
     else:
         mse = torch.zeros([], device=mask_logit.device)
-
     total = (TVERSKY_WEIGHT * tv + DICE_WEIGHT * d
              + BCE_WEIGHT * bce + SARG_NEG_WEIGHT * sarg + FRAC_WEIGHT * mse)
     return {"total": total, "tversky": tv, "dice": d,
@@ -523,11 +463,7 @@ def compute_total_loss(outputs, mask_t, frac_t, valid_w, cl):
 
 @torch.no_grad()
 def _forward_tta(model, feats):
-    """Test-time augmentation: average probs across 4 rotations + hflip.
-
-    Free +0.02-0.05 IoU. Slower (5x compute per val batch) but val is
-    only 41 batches so overhead is ~1s/epoch.
-    """
+    """4-way TTA: original + 90° rot + 180° rot + hflip, averaged."""
     out = model(feats)
     probs = torch.sigmoid(out["mask_logit"])
     frac = out["fraction"]
@@ -586,7 +522,6 @@ def eval_val(model, loader, device,
 
         n_pixels_seen += valid.sum().item()
         n_truth_pos += truth.sum().item()
-        # v5 fix: nan_to_num before sum so mean_p is finite
         sum_prob += torch.nan_to_num(probs[valid], nan=0.0).sum().item()
         pred_pos_at_010 += ((probs >= 0.1) & valid).sum().item()
         pred_pos_at_050 += ((probs >= 0.5) & valid).sum().item()
@@ -656,9 +591,7 @@ def train() -> dict[str, Any]:
     print(f"Val patches WITH plastic: {val_plastic_count}/{len(val_paths)} "
           f"({val_plastic_count / max(len(val_paths), 1) * 100:.1f}%)")
     if val_plastic_count == 0:
-        raise RuntimeError(
-            "ABORT: validation set contains zero plastic-bearing patches."
-        )
+        raise RuntimeError("ABORT: validation set has zero plastic patches.")
 
     train_ds = MaridaDualHeadDataset(train_paths, train_mode=True)
     val_ds = MaridaDualHeadDataset(val_paths, train_mode=False)
@@ -681,10 +614,6 @@ def train() -> dict[str, Any]:
     assert n_bn == 0
     model = model.to(device)
     print(f"Model params (GN): {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
-
-    # v5: EMA shadow model
-    ema = ModelEMA(model, decay=EMA_DECAY)
-    print(f"EMA enabled: decay={EMA_DECAY}")
 
     sample_batch = next(iter(train_loader))
     sf = sample_batch["features"]
@@ -765,7 +694,6 @@ def train() -> dict[str, Any]:
             torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP_NORM)
             scaler.step(optimizer)
             scaler.update()
-            ema.update(model)  # v5: shadow weights updated each step
 
             for k in losses_acc:
                 losses_acc[k] += losses[k].item()
@@ -781,8 +709,8 @@ def train() -> dict[str, Any]:
         train_pred_pos_pct = train_pred_pos_pct_sum / max(seen_steps, 1)
         train_time = time.time() - t0
 
-        # v5: eval EMA shadow weights, NOT the live model
-        val_metrics = eval_val(ema.shadow, val_loader, device, use_tta=True)
+        # v6: eval LIVE model with TTA. No EMA shadow lag.
+        val_metrics = eval_val(model, val_loader, device, use_tta=True)
 
         print(
             f"E{epoch:02d}/{EPOCHS} "
@@ -790,7 +718,7 @@ def train() -> dict[str, Any]:
             f"(tv={losses_avg['tversky']:.3f} d={losses_avg['dice']:.3f} "
             f"bce={losses_avg['bce']:.3f} sg={losses_avg['sarg']:.3f}) "
             f"| train_pred_pos={train_pred_pos_pct:.2f}% "
-            f"| EMA val_iou={val_metrics['iou']:.4f}@t={val_metrics['best_threshold']:.2f} "
+            f"| val_iou={val_metrics['iou']:.4f}@t={val_metrics['best_threshold']:.2f} "
             f"val_pred_pos={val_metrics['pred_positive_pct_at_0.1']:.2f}% "
             f"mean_p={val_metrics['mean_predicted_prob']:.3f} "
             f"p@0.7={val_metrics['precision_at_0_7']:.3f} "
@@ -817,17 +745,17 @@ def train() -> dict[str, Any]:
             best_threshold = val_metrics["best_threshold"]
             best_epoch = epoch
             best_state = {k: v.detach().cpu().clone()
-                          for k, v in ema.shadow.state_dict().items()}
-            print(f"  ↑ new best EMA IoU: {best_iou:.4f} @ threshold "
+                          for k, v in model.state_dict().items()}
+            print(f"  ↑ new best IoU: {best_iou:.4f} @ threshold "
                   f"{best_threshold:.2f} (epoch {best_epoch})")
 
     if best_state is None:
         best_state = {k: v.detach().cpu().clone()
-                      for k, v in ema.shadow.state_dict().items()}
+                      for k, v in model.state_dict().items()}
 
     torch.save(best_state, CHECKPOINT_OUT)
     size_mb = CHECKPOINT_OUT.stat().st_size / (1024 * 1024)
-    print(f"\nSaved best epoch ({best_epoch}) EMA checkpoint → "
+    print(f"\nSaved best epoch ({best_epoch}) checkpoint → "
           f"{CHECKPOINT_OUT.resolve()} ({size_mb:.1f} MB)")
     print(f"Best val_iou = {best_iou:.4f} at threshold = {best_threshold:.2f}")
     print(f"Total NaN-skips across training: {nan_skips}")
@@ -839,18 +767,18 @@ def train() -> dict[str, Any]:
         "nan_skips_total": nan_skips,
         "history": history,
         "config": {
+            "version": "v6",
             "epochs": EPOCHS, "batch_size": BATCH_SIZE,
             "lr_head": LR_HEAD, "lr_full": LR_FULL,
             "warmup_epochs": WARMUP_EPOCHS,
             "seed": SEED,
             "tversky_alpha": TVERSKY_ALPHA, "tversky_beta": TVERSKY_BETA,
             "tversky_weight": TVERSKY_WEIGHT,
-            "dice_weight": DICE_WEIGHT,
-            "bce_weight": BCE_WEIGHT,
+            "dice_weight": DICE_WEIGHT, "bce_weight": BCE_WEIGHT,
             "sarg_neg_weight": SARG_NEG_WEIGHT,
             "frac_weight": FRAC_WEIGHT,
-            "ema_decay": EMA_DECAY,
             "tta_at_val": True,
+            "ema": False,
             "plastic_sample_weight": PLASTIC_SAMPLE_WEIGHT,
             "mix_prob": MIX_PROB, "biofouling_prob": BIOFOULING_PROB,
             "normalization": "per_patch_pct_2_98",
