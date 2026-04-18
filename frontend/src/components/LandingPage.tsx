@@ -21,7 +21,7 @@ const fadeUp: Variants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: smoothEase } },
 };
 
-export const NewLandingPage: React.FC = () => {
+export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const sequenceRef = useRef<HTMLDivElement>(null);
   const vid1Ref = useRef<HTMLDivElement>(null);
@@ -96,7 +96,7 @@ export const NewLandingPage: React.FC = () => {
         left: "58%",
         borderRadius: "24px",
         ease: "power2.inOut",
-        duration: 1
+        duration: 2
       }, 0)
       
       // Phase 2: Vid 2 fades in and shrinks strictly to Center Right
@@ -108,7 +108,7 @@ export const NewLandingPage: React.FC = () => {
         left: "75%",
         borderRadius: "24px",
         ease: "power2.inOut",
-        duration: 1
+        duration: 1.5
       })
       
       // Phase 3: Vid 3 fades in and sinks to Bottom Left
@@ -120,7 +120,7 @@ export const NewLandingPage: React.FC = () => {
         left: "6%",
         borderRadius: "20px",
         ease: "power2.inOut",
-        duration: 1
+        duration: 1.5
       })
       
       // Phase 4: Vid 4 fades in and anchors purely top-center layout coordinates
@@ -132,7 +132,7 @@ export const NewLandingPage: React.FC = () => {
         left: "34%",
         borderRadius: "24px",
         ease: "power2.inOut",
-        duration: 1
+        duration: 1.5
       });
 
     }, sequenceRef);
@@ -333,7 +333,7 @@ export const NewLandingPage: React.FC = () => {
         </section>
 
         {/* ── FINAL CTA ── */}
-        <section className="flex flex-col justify-center items-center text-center max-w-3xl mx-auto px-4 md:px-6 mb-28 md:mb-1">
+        <section className="flex flex-col justify-center items-center text-center max-w-3xl mx-auto px-4 md:px-6 mb-28 md:mb-10">
           <motion.div
             initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
