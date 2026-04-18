@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { DRIFT_ROUTE_CONFIG } from './config/driftRouteConfig';
 import './App.css';
 
-const NewLandingPage = lazy(() => import('./components/NewLandingPage').then((mod) => ({ default: mod.NewLandingPage })));
+const LandingPage = lazy(() => import('./components/LandingPage').then((mod) => ({ default: mod.LandingPage })));
 const DriftAppShell = lazy(() => import('./components/DriftAppShell').then((mod) => ({ default: mod.DriftAppShell })));
 
 const Loader = () => (
@@ -29,7 +29,7 @@ function App() {
       <div className="app-container" style={{ width: '100%', height: '100vh', margin: 0, padding: 0 }}>
         <Suspense fallback={<Loader />}>
           <Routes>
-            <Route path="/" element={<NewLandingPage />} />
+            <Route path="/" element={<LandingPage />} />
             <Route path="/drift" element={<DriftAppShell />}>
               {DRIFT_ROUTE_CONFIG.map((route) => {
                 const RouteComponent = route.component;
