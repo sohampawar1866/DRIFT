@@ -20,8 +20,8 @@ def _log_fallback(message: str) -> None:
     logger.warning("stac fallback: %s", message)
     print(f"[DRIFT_FALLBACK] stac_service: {message}")
 
-# Grab the timeout from .env (defaults to 30 seconds if missing)
-STAC_FETCH_TIMEOUT = int(os.getenv("STAC_FETCH_TIMEOUT", 30))
+# Grab the timeout from .env (defaults to 300 seconds if missing)
+STAC_FETCH_TIMEOUT = int(os.getenv("STAC_FETCH_TIMEOUT", 300))
 
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "cache")
 
@@ -61,8 +61,37 @@ def _required_band_paths(item_folder: str) -> dict:
     }
 
 
+# Bands that are absolutely required (model feature computation needs these)
+_CORE_BANDS: tuple[str, ...] = ("b2", "b3", "b4", "b5", "b6", "b7", "b8", "b8a", "b11")
+
+
 def _has_required_bands(paths: dict) -> bool:
-    return all(os.path.exists(paths.get(name, "")) for name in S2_BAND_ORDER)
+    """Check that at least the core bands exist on disk."""
+    return all(os.path.exists(paths.get(name, "")) for name in _CORE_BANDS)
+
+
+def _ensure_optional_bands(paths: dict) -> None:
+    """Create zero-fill placeholders for b12 and scl if missing.
+
+    The model's feature_stack uses bands 0-8 (B2..B11) plus spectral indices.
+    B12 (index 9) and SCL (index 10) are included in the stack for completeness
+    but contribute minimally. When these bands weren't downloaded, we fill them
+    with zeros so the stack builder doesn't fail.
+    """
+    ref_band = paths.get(_CORE_BANDS[0])
+    if ref_band is None or not os.path.exists(ref_band):
+        return
+
+    for band in ("b12", "scl"):
+        if os.path.exists(paths.get(band, "")):
+            continue
+        logger.info("stac: creating zero-fill placeholder for missing band %s", band)
+        with rasterio.open(ref_band) as src:
+            profile = src.profile.copy()
+            profile.update(dtype="float32", nodata=0.0)
+            with rasterio.open(paths[band], "w", **profile) as dst:
+                import numpy as np
+                dst.write(np.zeros((1, src.height, src.width), dtype="float32"))
 
 
 def _build_stack_tif(paths: dict) -> None:
@@ -96,7 +125,8 @@ def _build_stack_tif(paths: dict) -> None:
 
 def _ensure_stack(paths: dict) -> None:
     if not _has_required_bands(paths):
-        raise RuntimeError("stac: required band files are missing")
+        raise RuntimeError("stac: required core band files are missing")
+    _ensure_optional_bands(paths)
     if not os.path.exists(paths["stack"]):
         _build_stack_tif(paths)
 
@@ -115,6 +145,23 @@ def _newest_valid_cache_dir(aoi_folder: str) -> str | None:
         return None
     valid.sort(key=lambda t: t[0], reverse=True)
     return valid[0][1]
+
+
+def _global_fallback_cache() -> tuple[str, str] | None:
+    """Search ALL AOI cache folders for any usable tile (demo fallback).
+
+    Returns (aoi_folder, item_id) or None.
+    """
+    if not os.path.isdir(CACHE_DIR):
+        return None
+    for aoi_name in os.listdir(CACHE_DIR):
+        aoi_folder = os.path.join(CACHE_DIR, aoi_name)
+        if not os.path.isdir(aoi_folder):
+            continue
+        item_id = _newest_valid_cache_dir(aoi_folder)
+        if item_id is not None:
+            return aoi_folder, item_id
+    return None
 
 
 def download_band(url: str, save_path: str):
@@ -210,23 +257,42 @@ def get_live_or_cached_imagery(aoi_id: str, bbox: list) -> dict:
     # 2. Offline Fallback Logic: Did we completely fail to talk to the internet?
     if stac_metadata is None or "error" in stac_metadata:
         newest_cached_id = _newest_valid_cache_dir(aoi_folder)
-        if not newest_cached_id:
-            return {"error": "No internet connection, and no local fallback imagery found!"}
-        logger.info("stac: using local fallback cache for %s -> %s", aoi_id, newest_cached_id)
-        _log_fallback(
-            f"using local cached imagery for {aoi_id} (item_id={newest_cached_id})"
-        )
-        local_paths = _required_band_paths(os.path.join(aoi_folder, newest_cached_id))
-        try:
-            _ensure_stack(local_paths)
-        except Exception as e:
-            return {"error": f"Cached imagery exists but stack build failed: {e}"}
-        
-        return {
-            "source": "local_fallback",
-            "id": newest_cached_id,
-            "local_paths": local_paths,
-        }
+        if newest_cached_id:
+            logger.info("stac: using local fallback cache for %s -> %s", aoi_id, newest_cached_id)
+            _log_fallback(
+                f"using local cached imagery for {aoi_id} (item_id={newest_cached_id})"
+            )
+            local_paths = _required_band_paths(os.path.join(aoi_folder, newest_cached_id))
+            try:
+                _ensure_stack(local_paths)
+            except Exception as e:
+                return {"error": f"Cached imagery exists but stack build failed: {e}"}
+            return {
+                "source": "local_fallback",
+                "id": newest_cached_id,
+                "local_paths": local_paths,
+            }
+
+        # Try ANY cached tile from a different AOI as demo fallback
+        global_hit = _global_fallback_cache()
+        if global_hit:
+            fb_folder, fb_item_id = global_hit
+            logger.info("stac: using global demo fallback for %s -> %s/%s", aoi_id, fb_folder, fb_item_id)
+            _log_fallback(
+                f"using global demo fallback imagery for {aoi_id} (source={fb_folder}, item_id={fb_item_id})"
+            )
+            local_paths = _required_band_paths(os.path.join(fb_folder, fb_item_id))
+            try:
+                _ensure_stack(local_paths)
+            except Exception as e:
+                return {"error": f"Global fallback stack build failed: {e}"}
+            return {
+                "source": "global_demo_fallback",
+                "id": fb_item_id,
+                "local_paths": local_paths,
+            }
+
+        return {"error": "No internet connection, and no local fallback imagery found!"}
     
     # 3. Online Success: We have a valid AWS image ID. Let's see if we already downloaded it today.
     item_id = stac_metadata["id"]

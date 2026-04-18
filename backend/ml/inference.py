@@ -47,15 +47,35 @@ def _cosine_window_2d(size: int) -> np.ndarray:
 def _read_tile_bands(tile_path: Path) -> tuple[np.ndarray, rasterio.Affine, str]:
     """Read N-band tile at native resolution as float32, shape (N, H, W).
 
-    BOA_ADD_OFFSET handling (PITFALL C1): MARIDA patches ship pre-scaled to
-    [0,1]. For defensive future-proofing against live L2A tiles with PB>=04.00,
-    we apply the heuristic (bands.max() > 1.5) -> treat as raw DN and rescale
-    via (DN - 1000) / 10000. For MARIDA, the branch is a no-op.
+    BOA_ADD_OFFSET handling: MARIDA patches ship pre-scaled to [0,1].
+    For live L2A tiles with PB>=04.00, we apply the heuristic
+    (bands.max() > 1.5) -> treat as raw DN and rescale via
+    (DN - 1000) / 10000.
+
+    Large tiles are center-cropped to MAX_INFERENCE_DIM via windowed
+    read to keep memory and inference time tractable.
     """
+    MAX_INFERENCE_DIM = 512
+
     with rasterio.open(tile_path) as src:
-        bands = src.read().astype(np.float32)  # (N_bands, H, W)
-        transform = src.transform
+        H, W = src.height, src.width
+        n_bands = src.count
         crs = src.crs.to_string()
+
+        if H > MAX_INFERENCE_DIM or W > MAX_INFERENCE_DIM:
+            # Windowed read: only load center crop
+            cy, cx = H // 2, W // 2
+            half = MAX_INFERENCE_DIM // 2
+            y0 = max(0, cy - half)
+            x0 = max(0, cx - half)
+            win_h = min(MAX_INFERENCE_DIM, H - y0)
+            win_w = min(MAX_INFERENCE_DIM, W - x0)
+            window = rasterio.windows.Window(x0, y0, win_w, win_h)
+            bands = src.read(window=window).astype(np.float32)
+            transform = src.window_transform(window)
+        else:
+            bands = src.read().astype(np.float32)
+            transform = src.transform
 
     if bands.shape[0] < 11:
         raise ValueError(

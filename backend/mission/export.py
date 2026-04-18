@@ -1,19 +1,17 @@
 """Mission export artifacts: GPX 1.1, GeoJSON, and one-page PDF briefing.
 
-Three pure functions (D-06). All consume the FROZEN MissionPlan; PDF
-optionally accepts a ForecastEnvelope for the +72h density overlay AND a
-per-waypoint currents summary table (D-09).
+Three pure functions. All consume the FROZEN MissionPlan; PDF optionally
+accepts a ForecastEnvelope for the +72h density overlay and a per-waypoint
+currents summary table.
 
-Imports order matters: matplotlib.use("Agg") MUST run before pyplot import
-(RESEARCH Pitfall 2 + Anti-Pattern list). Coastline is cached at module
-scope (Anti-Pattern: re-reading per call).
+Imports order matters: matplotlib.use("Agg") MUST run before pyplot import.
+Coastline is cached at module scope.
 
-D-09 currents table note: the ForecastFrame schema carries particle_positions
-only -- no explicit u/v or wind fields. We therefore derive a per-waypoint
-CURRENTS magnitude + direction from the displacement of the nearest particle
-between hour=0 and hour=72 (divided by elapsed seconds -> m/s). Wind columns
-are intentionally dropped -- they are not present in the schema and fabricating
-them would violate D-09's honesty principle. The PDF caption records this.
+Currents table note: ForecastFrame carries particle_positions only — no
+explicit u/v or wind fields. We derive per-waypoint CURRENTS magnitude +
+direction from displacement of the nearest particle between hour=0 and
+hour=72 (divided by elapsed seconds -> m/s). Wind columns are intentionally
+dropped since they are not present in the schema.
 """
 from __future__ import annotations
 
@@ -48,7 +46,7 @@ XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
 SCHEMA_LOC = ("http://www.topografix.com/GPX/1/1 "
               "http://www.topografix.com/GPX/1/1/gpx.xsd")
 COASTLINE_PATH = Path("data/basemap/ne_10m_coastline_indian_eez.shp")
-FUEL_L_PER_KM = 2.5  # D-09
+FUEL_L_PER_KM = 2.5
 
 ET.register_namespace("", GPX_NS)
 ET.register_namespace("xsi", XSI_NS)
@@ -137,10 +135,10 @@ def _nearest_particle_displacement(
 def _build_currents_table_rows(
     mission: MissionPlan, forecast: ForecastEnvelope
 ) -> list[list[str]]:
-    """Compose the D-09 currents summary. Header + one row per waypoint.
+    """Compose the currents summary. Header + one row per waypoint.
 
-    Wind columns are deliberately omitted -- ForecastFrame carries no wind
-    field (see schema). If a future phase adds u10/v10 to ForecastFrame,
+    Wind columns are deliberately omitted — ForecastFrame carries no wind
+    field (see schema). If a future update adds u10/v10 to ForecastFrame,
     extend this function; the PDF caption documents the current limitation.
     """
     rows: list[list[str]] = [["#", "|v_current| (m/s)", "v_current dir (deg)"]]
@@ -200,7 +198,7 @@ def _render_map_png(mission: MissionPlan,
 def export_pdf(mission: MissionPlan,
                forecast: Optional[ForecastEnvelope],
                path: Path) -> Path:
-    """One-page A4 portrait briefing per D-09."""
+    """One-page A4 portrait mission briefing."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     doc = SimpleDocTemplate(
@@ -243,7 +241,7 @@ def export_pdf(mission: MissionPlan,
     story.append(table)
     story.append(Spacer(1, 0.3 * cm))
 
-    # M5: D-09 Currents summary table from the +72h frame.
+    # Currents summary table from the +72h frame.
     if forecast is not None and forecast.frames and mission.waypoints:
         story.append(Paragraph(
             "<b>Currents Summary (+72 h frame, nearest-particle derived)</b>",

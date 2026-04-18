@@ -5,8 +5,8 @@ layer runs the real intelligence pipeline (backend.ml / physics / mission).
 
 Endpoints
 ---------
-GET  /api/v1/aois                        list AOIs for the frontend dropdown
-GET  /api/v1/detect                       run_inference on MARIDA tile → polygons
+GET  /api/v1/aois                        list AOIs (coordinate-based)
+GET  /api/v1/detect                       run inference on Sentinel-2 tile → polygons
 GET  /api/v1/forecast                     detect → forecast_drift (Euler tracker)
 GET  /api/v1/mission                      detect → plan_mission (greedy+2-opt TSP)
 GET  /api/v1/mission/export               GPX | GeoJSON | PDF (real export.py)
@@ -34,6 +34,8 @@ from backend.services.mission_planner import (
     calculate_cleanup_mission_plan,
 )
 from backend.services.aoi_registry import list_aois as registry_list_aois, resolve as registry_resolve
+
+_CUSTOM_AOI_HALF_SPAN_DEG = 0.03
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +111,7 @@ def _parse_polygon_bbox(raw_polygon: str | None) -> list[float] | None:
 
 
 def _request_bbox(aoi_id: str, bbox: str | None, polygon: str | None) -> list[float]:
+    """Resolve the bounding box from explicit params or the AOI ID."""
     parsed = _parse_bbox_str(bbox)
     if parsed is not None:
         return parsed
@@ -119,7 +122,21 @@ def _request_bbox(aoi_id: str, bbox: str | None, polygon: str | None) -> list[fl
     if entry is not None:
         (west, south), (east, north) = entry["bounds"]
         return [west, south, east, north]
-    return [72.7, 18.8, 73.0, 19.1]
+    # Parse custom_{lon}_{lat} format
+    if aoi_id.startswith("custom_"):
+        parts = aoi_id.split("_")
+        if len(parts) == 3:
+            try:
+                lon, lat = float(parts[1]), float(parts[2])
+                return [
+                    lon - _CUSTOM_AOI_HALF_SPAN_DEG,
+                    lat - _CUSTOM_AOI_HALF_SPAN_DEG,
+                    lon + _CUSTOM_AOI_HALF_SPAN_DEG,
+                    lat + _CUSTOM_AOI_HALF_SPAN_DEG,
+                ]
+            except ValueError:
+                pass
+    raise HTTPException(status_code=400, detail=f"Cannot determine bbox for aoi_id: {aoi_id}")
 
 
 def _bbox_area_m2(bbox_vals: list[float]) -> float:
@@ -132,24 +149,18 @@ def _bbox_area_m2(bbox_vals: list[float]) -> float:
 
 @router.get("/aois")
 def list_aois():
-    """Return pre-staged AOIs (frontend dropdown).
-
-    Returns canonical AOIs from aoi_registry.
-    """
-    registry = registry_list_aois()
-    if not registry:
-        raise HTTPException(status_code=503, detail="AOI registry is empty")
-    return {"aois": registry}
+    """Return available AOIs. Returns an empty list when using coordinate-based selection."""
+    return {"aois": registry_list_aois()}
 
 
 @router.get("/detect")
 def detect_plastic(
-    aoi_id: str = "mumbai",
+    aoi_id: str,
     s2_tile_path: str | None = None,
     bbox: str | None = None,
     polygon: str | None = None,
 ):
-    """Run the real plastic-detection pipeline on a MARIDA tile for the AOI.
+    """Run the plastic-detection pipeline on a Sentinel-2 tile for the AOI.
 
     Returns a GeoJSON FeatureCollection with properties
     `{id, confidence, area_sq_meters, age_days, type, fraction_plastic}`.
@@ -159,7 +170,7 @@ def detect_plastic(
 
 @router.get("/forecast")
 def forecast_drift(
-    aoi_id: str = "mumbai",
+    aoi_id: str,
     hours: int = 24,
     bbox: str | None = None,
     polygon: str | None = None,
@@ -179,7 +190,7 @@ def forecast_drift(
 
 @router.get("/mission")
 def plan_mission(
-    aoi_id: str = "mumbai",
+    aoi_id: str,
     bbox: str | None = None,
     polygon: str | None = None,
 ):
@@ -193,7 +204,7 @@ def plan_mission(
 
 @router.get("/dashboard/metrics")
 def get_dashboard_stats(
-    aoi_id: str = "mumbai",
+    aoi_id: str,
     bbox: str | None = None,
     polygon: str | None = None,
 ):
@@ -218,7 +229,7 @@ def get_dashboard_stats(
             aoi_id,
             region_bbox,
             horizon_hours=72,
-            ensure_live=True,
+            ensure_live=False,
         )
     except RuntimeError as exc:
         raise _as_http_error(exc) from exc
@@ -249,7 +260,7 @@ def get_dashboard_stats(
 
 @router.get("/environment")
 def get_environment_context(
-    aoi_id: str = "mumbai",
+    aoi_id: str,
     bbox: str | None = None,
     polygon: str | None = None,
 ):
@@ -260,7 +271,7 @@ def get_environment_context(
             aoi_id,
             req_bbox,
             horizon_hours=72,
-            ensure_live=True,
+            ensure_live=False,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -270,7 +281,7 @@ def get_environment_context(
 
 @router.get("/alerts/preview")
 def preview_deposition_alerts(
-    aoi_id: str = "mumbai",
+    aoi_id: str,
     hours: int = 360,
     bbox: str | None = None,
     polygon: str | None = None,
@@ -299,7 +310,7 @@ def preview_deposition_alerts(
 
 @router.get("/mission/export")
 def export_mission_file(
-    aoi_id: str = "mumbai",
+    aoi_id: str,
     format: str = "gpx",
     bbox: str | None = None,
     polygon: str | None = None,

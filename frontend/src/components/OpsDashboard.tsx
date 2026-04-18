@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import Map from 'react-map-gl/maplibre';
 import DeckGL from '@deck.gl/react';
-import { GeoJsonLayer } from '@deck.gl/layers';
+import { GeoJsonLayer, ScatterplotLayer } from '@deck.gl/layers';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Activity, BarChart2, CheckCircle, FileCode2, FileText } from 'lucide-react';
 import gsap from 'gsap';
@@ -79,6 +79,20 @@ export const OpsDashboard: React.FC = () => {
 
     return undefined;
   }, [aoi_id, location.state]);
+
+  const customCenter = React.useMemo(() => {
+    if (aoi_id?.startsWith('custom_')) {
+      const parts = aoi_id.split('_');
+      if (parts.length === 3) {
+        const lon = parseFloat(parts[1]);
+        const lat = parseFloat(parts[2]);
+        if (!Number.isNaN(lon) && !Number.isNaN(lat)) {
+          return [lon, lat] as [number, number];
+        }
+      }
+    }
+    return null;
+  }, [aoi_id]);
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 1024);
@@ -218,6 +232,17 @@ export const OpsDashboard: React.FC = () => {
       stroked: true,
       filled: false,
       pickable: true,
+    }),
+
+    // The target origin marker
+    customCenter && new ScatterplotLayer({
+      id: 'target-origin',
+      data: [{ position: customCenter }],
+      getPosition: (d: { position: [number, number] }) => d.position,
+      getFillColor: [16, 185, 129, 255], // Emerald green locator dot
+      getRadius: 200,
+      radiusMinPixels: 6,
+      pickable: true
     })
   ].filter(Boolean);
 

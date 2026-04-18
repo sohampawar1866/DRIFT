@@ -1,7 +1,6 @@
 """CLI: python -m backend.mission <forecast.json>
 
-Phase 1: passes the forecast through the stub plan_mission and emits a
-schema-valid empty MissionPlan.
+Runs the mission planner on a forecast envelope and emits a MissionPlan.
 """
 import argparse
 import sys
@@ -18,8 +17,8 @@ def main() -> None:
                     help="ForecastEnvelope JSON (from `python -m backend.physics`)")
     ap.add_argument("--vessel-range-km", type=float, default=200.0)
     ap.add_argument("--hours", type=float, default=8.0)
-    ap.add_argument("--origin", type=str, default="72.8,18.9",
-                    help="Origin as 'lon,lat' (default Mumbai)")
+    ap.add_argument("--origin", type=str, default="0.0,0.0",
+                    help="Origin as 'lon,lat'")
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args()
 

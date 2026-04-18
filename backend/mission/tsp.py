@@ -5,7 +5,7 @@ tuples. Tours are represented as ordered lists of point indices into a
 candidates array; the origin is prepended/appended at the route-building
 layer, NOT here.
 
-Implements D-11: greedy construction followed by 2-opt until convergence
+Implements greedy construction followed by 2-opt until convergence
 (or an N**2 iteration cap, whichever comes first).
 """
 from __future__ import annotations
@@ -65,7 +65,7 @@ def two_opt(
     """2-opt improvement: reverse sub-tours while distance strictly decreases.
 
     Terminates when no improving swap exists OR `max_iters` swap-evaluations
-    have been performed (default N**2, per D-11 safety cap).
+    have been performed (default N**2 safety cap).
 
     Args:
         origin: (lon, lat) vessel start/end.

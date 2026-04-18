@@ -47,7 +47,7 @@ function endpoint(path: string): string {
 
 const client = axios.create({
   baseURL: API_BASE_URL || undefined,
-  timeout: 20_000,
+  timeout: 300_000,
   headers: { 'Content-Type': 'application/json' },
 });
 

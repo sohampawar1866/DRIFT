@@ -1,10 +1,10 @@
-"""Euler Lagrangian tracker (PHYS-03, D-14 UTM-meter integration).
+"""Euler Lagrangian tracker (UTM-meter integration).
 
 Per-detection: seed N particles at polygon centroid with +/-50 m Gaussian
-jitter in UTM meters (D-08). Integrate hourly in UTM meters with windage
+jitter in UTM meters. Integrate hourly in UTM meters with windage
 and a small stochastic diffusion term to model sub-grid turbulence.
 
-Coastline encounter uses beach-on-NaN (D-15): particles entering NaN-current
+Coastline encounter uses beach-on-NaN: particles entering NaN-current
 cells are frozen and marked as deposited/landfall. Forecast has a hard 90-day
 cutoff (2160h). The dashboard can treat 15 days (360h) as the active
 operational horizon while still exposing long-tail deposition risk.
@@ -46,7 +46,7 @@ def _is_density_hour(hour: int) -> bool:
 def _utm_zone_from_lonlat(lon: float, lat: float) -> int:
     """Return EPSG code for the UTM zone containing (lon, lat). Northern hemisphere only."""
     _, _, zone, _ = utm_lib.from_latlon(lat, lon)
-    return 32600 + zone  # 32643 for zone 43N (Mumbai / Arabian Sea)
+    return 32600 + zone
 
 
 def _make_transformers(utm_epsg: int) -> tuple[Transformer, Transformer]:
@@ -60,7 +60,7 @@ def _seed_particles_utm(
     n: int,
     rng: np.random.Generator,
 ) -> np.ndarray:
-    """Return (n, 2) UTM-meter array with Gaussian +/-50 m jitter (D-08)."""
+    """Return (n, 2) UTM-meter array with Gaussian +/-50 m jitter."""
     cx, cy = centroid_utm
     return np.column_stack([
         rng.normal(cx, JITTER_M, size=n),
@@ -80,7 +80,7 @@ def _step_particle(
     rng: np.random.Generator,
     diffusion_sigma_m: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Euler step in UTM meters. Particles hitting NaN currents freeze (beach-on-NaN, D-15)."""
+    """Euler step in UTM meters. Particles hitting NaN currents freeze (beach-on-NaN)."""
     new_p = p_utm.copy()
     new_alive = alive.copy()
     new_beached = beached.copy()

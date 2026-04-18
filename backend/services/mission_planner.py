@@ -1,16 +1,15 @@
-"""mission_planner — thin service wrapper over backend.mission.planner.plan_mission.
+"""mission_planner — service wrapper over backend.mission.planner.plan_mission.
 
 Integration layer:
 - Accepts API-shape `detected_geojson` from ai_detector
 - Rebuilds a FROZEN DetectionFeatureCollection
 - Wraps it in a minimal ForecastEnvelope (no drift frames — scoring
-  degrades gracefully to conf*area*fraction * accessibility per D-12)
+  degrades gracefully to conf*area*fraction * accessibility)
 - Runs the real greedy+2-opt TSP planner with dual (range+time) budget
-- Adapts the MissionPlan to the legacy API LineString GeoJSON shape
+- Adapts the MissionPlan to the API LineString GeoJSON shape
 
-Mission scoring with no forecast is intentional: the /mission endpoint does
-not receive a forecast, so we score purely from detection intrinsics +
-distance-to-origin.
+The /mission endpoint does not receive a forecast, so scoring uses
+detection intrinsics + distance-to-origin only.
 """
 from __future__ import annotations
 
@@ -53,10 +52,9 @@ def _api_shape_to_detection_fc(api_fc: dict[str, Any]):
 
 
 def _mission_to_api_shape(plan, aoi_id: str) -> dict[str, Any]:
-    """Adapt FROZEN MissionPlan → legacy API LineString FeatureCollection.
+    """Adapt FROZEN MissionPlan → API LineString FeatureCollection.
 
-    Legacy shape: single Feature with LineString geometry + `mission_id`,
-    `estimated_vessel_time_hours`, `priority` properties.
+    Per-feature properties: `mission_id`, `estimated_vessel_time_hours`, `priority`.
     """
     # MissionPlan.route is a Feature[LineString, dict] — pull its geometry.
     route = plan.route

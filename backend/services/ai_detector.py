@@ -28,15 +28,15 @@ def _predicted_class(confidence: float) -> str:
 
 
 def _detection_fc_to_api_shape(fc, aoi_id: str, env_meta: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Adapt FROZEN DetectionFeatureCollection → legacy API dict shape.
+    """Adapt FROZEN DetectionFeatureCollection → API dict shape.
 
-    Legacy per-feature `properties`:
+    Per-feature `properties`:
         id: "{aoi_id}_{NNN}"              synthesized from index
         confidence: float                 mapped from conf_adj (biofouling-decayed)
         area_sq_meters: float             renamed from area_m2
         age_days: int                     renamed from age_days_est
-        type: "macroplastic"              fixed literal (cls is always 'plastic')
-        fraction_plastic: float           bonus — sub-pixel coverage (new)
+        type: "macroplastic"              fixed literal
+        fraction_plastic: float           sub-pixel coverage
     """
     features: list[dict[str, Any]] = []
     env_meta = env_meta or {}
@@ -68,6 +68,7 @@ def _detection_fc_to_api_shape(fc, aoi_id: str, env_meta: dict[str, Any] | None 
 
 
 def _env_bbox_for(aoi_id: str, bbox_override: list[float] | None) -> list[float]:
+    """Resolve the bounding box for environmental data lookup."""
     if bbox_override is not None:
         return bbox_override
     entry = resolve(aoi_id)
@@ -77,7 +78,7 @@ def _env_bbox_for(aoi_id: str, bbox_override: list[float] | None) -> list[float]
     custom = _bbox_from_custom_aoi_id(aoi_id)
     if custom is not None:
         return custom
-    return [72.7, 18.8, 73.0, 19.1]
+    raise RuntimeError(f"Cannot determine bbox for aoi_id: {aoi_id}")
 
 
 def _iter_points(coords):
@@ -245,7 +246,7 @@ def detect_macroplastic(
         aoi_id,
         _env_bbox_for(aoi_id, bbox_override),
         horizon_hours=72,
-        ensure_live=True,
+        ensure_live=False,
     )
 
     tile, tile_meta = _resolve_tile(aoi_id, s2_tile_path, bbox_override=bbox_override)

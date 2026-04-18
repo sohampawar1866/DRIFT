@@ -40,7 +40,7 @@ export const DRIFT_ROUTE_CONFIG: DriftRouteConfig[] = [
     component: OpsDashboardPage,
     nav: {
       label: 'Ops Detail',
-      to: '/drift/aoi/mumbai',
+      to: '/drift/aoi/latest',
       icon: Radar,
       activePrefixes: ['/drift/aoi/'],
     },

@@ -1,11 +1,11 @@
 """plan_mission: priority-scored greedy + 2-opt TSP with budget enforcement.
 
-Contract (D-09, never raise):
+Behavior:
   * 0 detections / all-out-of-range / top_k==0 -> empty waypoints, degenerate
     LineString at origin, zero distance, zero hours.
   * Budget exhausted mid-tour -> return visited prefix; partial route returns
     from last reachable waypoint to origin.
-  * Route is always closed (origin -> waypoints -> origin, D-10).
+  * Route is always closed (origin -> waypoints -> origin).
 """
 from __future__ import annotations
 
@@ -67,7 +67,7 @@ def _build_plan_from_order(
         ))
         coords.append([centroid[0], centroid[1]])
         prev = centroid
-    # Return-to-origin leg (D-10: route always closed)
+    # Return-to-origin leg (route always closed)
     if order:
         cumulative_km += haversine_km(prev, origin)
         coords.append([origin[0], origin[1]])
@@ -121,17 +121,17 @@ def plan_mission(
     forecast: ForecastEnvelope,
     vessel_range_km: float = 200.0,
     hours: float = 8.0,
-    origin: tuple[float, float] = (72.8, 18.9),
+    origin: tuple[float, float] = (0.0, 0.0),
     cfg: Settings | None = None,
 ) -> MissionPlan:
     cfg = cfg or Settings()
     avg_speed = cfg.mission.avg_speed_kmh
 
-    # D-09: never raise on empty input.
+    # Never raise on empty input.
     if not forecast.source_detections.features:
         return _degenerate_plan(origin)
 
-    # Score all detections per D-12.
+    # Score all detections.
     scored = score_all(forecast, origin, cfg, vessel_range_km)
     # Drop non-positive scores (e.g., fraction_plastic==0 or out-of-range).
     scored = [(det, s) for det, s in scored if s > 0.0]
@@ -149,7 +149,7 @@ def plan_mission(
     candidates = [(detection_centroid(det), s) for det, s in scored]
     points = [c for c, _ in candidates]
 
-    # Greedy + 2-opt (D-11).
+    # Greedy + 2-opt TSP.
     order = greedy_nearest_neighbor(origin, points)
     order = two_opt(origin, points, order)
 

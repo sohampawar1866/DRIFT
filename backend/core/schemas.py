@@ -1,7 +1,7 @@
 """Frozen pydantic contracts for DRIFT intelligence pipeline.
 
-FROZEN at Phase 1 exit. Any field edit requires an explicit entry in
-.planning/STATE.md and a re-run of tests/unit/test_schemas.py.
+These schemas are frozen. Any field edit requires a re-run of
+tests/unit/test_schemas.py.
 """
 from typing import Any, Literal
 
@@ -36,8 +36,7 @@ class DetectionProperties(BaseModel):
 DetectionFeature = Feature[Polygon, DetectionProperties]
 DetectionFeatureCollection = FeatureCollection[DetectionFeature]
 
-
-# Phase 2 / Phase 3 contracts -- frozen NOW to prevent schema drift later.
+# Forecast & mission contracts — frozen to prevent schema drift.
 class ForecastFrame(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     hour: int = Field(ge=0, le=2160)
