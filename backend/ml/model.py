@@ -1,16 +1,41 @@
-"""UnetPlusPlus with ResNet-18 encoder, SCSE decoder attention, dual heads.
+"""Model definitions for DRIFT inference/training.
 
-Design: one shared decoder (16-channel feature map) -> two 1x1 Conv2d heads
-    - mask_head: plastic binary probability logit (sigmoid at inference)
-    - frac_head: fractional-cover regression (sigmoid, [0,1])
-
-SCSE (spatial + channel squeeze-excite) is supplied by smp via
-`decoder_attention_type="scse"` (cleaner than wrapping the encoder stem and
-zero LOC for the Phase 1 budget; see RESEARCH.md Decision 5).
+`OurRealUNetPP` is the production runtime model used with
+`backend/ml/checkpoints/our_real.pth`.
+`DualHeadUNetpp` is kept as a legacy training artifact for backward
+compatibility in older experiments.
 """
 import torch
 import torch.nn as nn
 import segmentation_models_pytorch as smp
+
+
+class OurRealUNetPP(nn.Module):
+    """Runtime architecture matching the shipped `our_real.pth` checkpoint.
+
+    The checkpoint is a single-head SMP UnetPlusPlus model. We expose the API
+    expected by inference (`mask_logit` and `fraction`) and derive `fraction`
+    from the mask probability because the checkpoint has only one output head.
+    """
+
+    def __init__(self, in_channels: int = 12, prediction_threshold: float | None = None):
+        super().__init__()
+        self.model = smp.UnetPlusPlus(
+            encoder_name="resnet34",
+            encoder_weights=None,
+            in_channels=in_channels,
+            classes=1,
+            activation=None,
+            decoder_attention_type=None,
+        )
+        self.prediction_threshold = prediction_threshold
+
+    def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
+        logits = self.model(x)
+        return {
+            "mask_logit": logits,
+            "fraction": torch.sigmoid(logits),
+        }
 
 
 class DualHeadUNetpp(nn.Module):

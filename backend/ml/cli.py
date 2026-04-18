@@ -1,6 +1,6 @@
 """CLI entrypoint: python -m backend.ml <tile.tif>
 
-Reads a Sentinel-2 tile, runs dummy-weight inference, and writes a
+Reads a Sentinel-2 tile, runs real-checkpoint inference, and writes a
 schema-valid DetectionFeatureCollection to stdout (or --out path).
 
 NOTE: `run_inference` is imported LAZILY inside main() because this plan

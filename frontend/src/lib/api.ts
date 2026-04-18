@@ -62,7 +62,7 @@ export function apiErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Unknown error';
 }
 
-export type ForecastHours = 24 | 48 | 72;
+export type ForecastHours = number;
 export type ExportFormat = 'gpx' | 'geojson' | 'pdf';
 export type Bbox = [number, number, number, number];
 
@@ -86,14 +86,89 @@ export interface DetectionFC extends GeoJSON.FeatureCollection {
   features: Array<GeoJSON.Feature<GeoJSON.Polygon, {
     id?: string;
     confidence?: number;
+    confidence_decay_k?: number;
     area_sq_meters?: number;
     age_days?: number;
     type?: string;
+    predicted_class?: string;
+    water_temp_c?: number | null;
+    chlorophyll_mg_m3?: number | null;
     fraction_plastic?: number;
   }>>;
 }
 
-export type ForecastFC = GeoJSON.FeatureCollection;
+export interface ForecastFeatureProperties {
+  forecast_hour?: number;
+  aoi_id?: string;
+  type?: string;
+  layer?: string;
+  level?: number;
+  density?: number;
+  render_color?: string;
+}
+
+export interface ForecastMetadata {
+  requested_horizon_hours?: number;
+  effective_horizon_hours?: number;
+  simulated_until_hour?: number;
+  total_particles?: number;
+  alive_particles?: number;
+  beached_particles?: number;
+  stop_track_at_90d_cap_applied?: boolean;
+  never_beached_particles_remaining?: number;
+  never_beached_until_stop?: boolean;
+  stopped_early_all_beached?: boolean;
+  stop_reason?: string;
+  requested_forecast_hour?: number;
+}
+
+export interface ForecastFC extends GeoJSON.FeatureCollection {
+  features: Array<GeoJSON.Feature<GeoJSON.Geometry, ForecastFeatureProperties>>;
+  metadata?: ForecastMetadata;
+}
+
+export interface EnvironmentSummary {
+  aoi_id: string;
+  bbox: [number, number, number, number];
+  water_temp_c: number;
+  chlorophyll_mg_m3: number;
+  confidence_decay_k: number;
+  generated_at: string;
+  source: string | null;
+}
+
+export interface AlertPreview {
+  aoi_id: string;
+  forecast_hours: number;
+  deposition_hotspots: number;
+  threshold_density: number;
+  threshold_persistence_hours: number;
+  triggered: boolean;
+  notifications: Array<{
+    organization: string;
+    contact: string;
+    distance_km: number;
+    hotspot_center: [number, number];
+    segment_key?: string;
+    channel: string;
+  }>;
+  coastal_segment_km?: number;
+  coastal_segments_evaluated?: number;
+  coastal_segments_triggered?: number;
+  segment_alerts?: Array<{
+    segment_key: string;
+    source_segment_id?: number | null;
+    bin_index?: number | null;
+    segment_center: [number, number];
+    segment_length_km: number;
+    hotspot_count: number;
+    density_score: number;
+    persistence_hours: number;
+    min_coast_distance_km?: number | null;
+    triggered: boolean;
+  }>;
+  status: string;
+}
 
 export interface MissionFC extends GeoJSON.FeatureCollection {
   features: Array<GeoJSON.Feature<GeoJSON.LineString, {
@@ -119,6 +194,12 @@ export interface DashboardMetrics {
     avg_confidence: number;
     high_priority_targets: number;
   };
+  region_statistics?: {
+    plastic_coverage_pct: number;
+    average_confidence: number;
+    area_m2: number;
+  };
+  environment?: EnvironmentSummary;
   biofouling_chart_data: Array<{ age_days: number; simulated_confidence: number }>;
 }
 
@@ -161,6 +242,20 @@ export async function forecast(aoi_id: string, hours: ForecastHours, spatial?: S
   return res.data;
 }
 
+export async function environmentContext(aoi_id: string, spatial?: SpatialQuery): Promise<EnvironmentSummary> {
+  const res = await client.get<EnvironmentSummary>(endpoint('/environment'), {
+    params: { aoi_id, ...spatialParams(spatial) },
+  });
+  return res.data;
+}
+
+export async function alertPreview(aoi_id: string, hours: ForecastHours, spatial?: SpatialQuery): Promise<AlertPreview> {
+  const res = await client.get<{ alerts: AlertPreview }>(endpoint('/alerts/preview'), {
+    params: { aoi_id, hours, ...spatialParams(spatial) },
+  });
+  return res.data.alerts;
+}
+
 export async function mission(aoi_id: string, spatial?: SpatialQuery): Promise<MissionFC> {
   const res = await client.get<MissionFC>(endpoint('/mission'), {
     params: { aoi_id, ...spatialParams(spatial) },
@@ -201,11 +296,8 @@ export function exportUrl(aoi_id: string, format: ExportFormat, spatial?: Spatia
 }
 
 export function snapForecastHours(h: number): ForecastHours {
-  const legal: ForecastHours[] = [24, 48, 72];
-  return legal.reduce<ForecastHours>(
-    (best, cur) => (Math.abs(cur - h) < Math.abs(best - h) ? cur : best),
-    24,
-  );
+  const bounded = Math.max(24, Math.min(2160, Math.round(h / 24) * 24));
+  return bounded;
 }
 
 export async function trackerCoastline(): Promise<GeoJSON.FeatureCollection> {
@@ -241,6 +333,8 @@ const api = {
   listAois,
   detect,
   forecast,
+  environmentContext,
+  alertPreview,
   mission,
   dashboardMetrics,
   exportUrl,

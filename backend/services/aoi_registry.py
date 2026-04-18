@@ -98,8 +98,7 @@ def resolve(aoi_id: str) -> AOIEntry | None:
 def list_aois() -> list[dict]:
     """List AOIs in the shape the `/api/v1/aois` endpoint expects.
 
-    Matches backend/services/mock_data.get_mock_aois() response format so the
-    frontend dropdown renders unchanged.
+    Returns the response format consumed by the frontend dropdown.
     """
     return [
         {

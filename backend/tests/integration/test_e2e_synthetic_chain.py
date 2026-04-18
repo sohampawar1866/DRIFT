@@ -22,7 +22,7 @@ def _has_marida() -> bool:
 
 
 @pytest.mark.skipif(not _has_marida(), reason="MARIDA val split / patches not available")
-def test_full_chain_dummy_synth_env(tmp_path):
+def test_full_chain_synthetic_env(tmp_path):
     out = tmp_path / "plan.json"
     t0 = time.perf_counter()
     cp = subprocess.run(

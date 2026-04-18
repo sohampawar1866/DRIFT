@@ -1,7 +1,7 @@
 [project]
 name = "drift-backend"
 version = "0.1.0"
-description = "DRIFT / PlastiTrack backend intelligence layer — schema foundation + dummy inference"
+description = "DRIFT / PlastiTrack backend intelligence layer — real Sentinel-2 inference and drift intelligence"
 requires-python = ">=3.11,<3.13"
 dependencies = [
     "fastapi==0.110.0",

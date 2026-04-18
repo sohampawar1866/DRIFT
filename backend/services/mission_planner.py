@@ -10,22 +10,14 @@ Integration layer:
 
 Mission scoring with no forecast is intentional: the /mission endpoint does
 not receive a forecast, so we score purely from detection intrinsics +
-distance-to-origin. This matches the `never raise` contract (D-09) and keeps
-the API fast (<1 s). For the richer convergence-aware ranking, call
-`simulate_drift` → `plan_mission` directly via e2e_test / prebake_demo.
-
-Falls back to mock_data.get_mock_mission_geojson on any error unless strict mode
-is enabled.
+distance-to-origin.
 """
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 from backend.services.aoi_registry import origin_for
-from backend.services.mock_data import get_mock_mission_geojson
-from backend.services.runtime_flags import strict_mode_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -155,22 +147,9 @@ def calculate_cleanup_mission(
     aoi_id: str,
 ) -> dict[str, Any]:
     """Plan an optimal cleanup route from detections.
-
-    Falls back to mock mission on failures unless strict mode is enabled.
     """
-    strict = strict_mode_enabled()
-
-    if os.environ.get("DRIFT_FORCE_MOCK", "").strip() == "1":
-        logger.info("mission_planner: DRIFT_FORCE_MOCK=1 → mock mission for %s", aoi_id)
-        return get_mock_mission_geojson(aoi_id)
-
     if not detected_geojson.get("features"):
-        if strict:
-            raise RuntimeError(
-                f"mission_planner: zero detections for {aoi_id}; strict mode disallows mock fallback"
-            )
-        logger.info("mission_planner: zero detections for %s → mock mission", aoi_id)
-        return get_mock_mission_geojson(aoi_id)
+        raise RuntimeError(f"mission_planner: zero detections for {aoi_id}; cannot plan mission")
 
     try:
         from backend.core.config import Settings
@@ -182,11 +161,9 @@ def calculate_cleanup_mission(
 
         detections_fc = _api_shape_to_detection_fc(detected_geojson)
         if not detections_fc.features:
-            if strict:
-                raise RuntimeError(
-                    f"mission_planner: detection conversion dropped all features for {aoi_id}"
-                )
-            return get_mock_mission_geojson(aoi_id)
+            raise RuntimeError(
+                f"mission_planner: detection conversion dropped all features for {aoi_id}"
+            )
 
         # Minimal envelope: source_detections + no drift frames.
         # Scoring degrades to (conf_adj * area_m2 * fraction_plastic) * accessibility.
@@ -209,9 +186,4 @@ def calculate_cleanup_mission(
         )
         return _mission_to_api_shape(plan, aoi_id)
     except Exception as e:
-        if strict:
-            raise RuntimeError(f"mission_planner: real planner failed for {aoi_id}: {e}") from e
-        logger.warning(
-            "mission_planner: real planner failed for %s: %s → mock", aoi_id, e,
-        )
-        return get_mock_mission_geojson(aoi_id)
+        raise RuntimeError(f"mission_planner: real planner failed for {aoi_id}: {e}") from e

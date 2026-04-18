@@ -3,7 +3,7 @@
 FROZEN at Phase 1 exit. Any field edit requires an explicit entry in
 .planning/STATE.md and a re-run of tests/unit/test_schemas.py.
 """
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from geojson_pydantic import Feature, FeatureCollection, LineString, Polygon
@@ -40,7 +40,7 @@ DetectionFeatureCollection = FeatureCollection[DetectionFeature]
 # Phase 2 / Phase 3 contracts -- frozen NOW to prevent schema drift later.
 class ForecastFrame(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    hour: int = Field(ge=0, le=72)
+    hour: int = Field(ge=0, le=2160)
     particle_positions: list[tuple[float, float]]  # (lon, lat)
     density_polygons: FeatureCollection
 
@@ -50,6 +50,7 @@ class ForecastEnvelope(BaseModel):
     source_detections: DetectionFeatureCollection
     frames: list[ForecastFrame]
     windage_alpha: float = Field(ge=0.0, le=0.1)
+    tracker_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class MissionWaypoint(BaseModel):

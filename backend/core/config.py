@@ -6,8 +6,7 @@ Env override examples:
 
 The settings_customise_sources override is REQUIRED -- pydantic-settings does
 NOT load YAML by default. Without this override, backend/config.yaml is
-ignored and all values fall back to hardcoded defaults. See PITFALL 8 in
-.planning/phases/01-schema-foundation-dummy-inference/01-RESEARCH.md.
+ignored and all values fall back to hardcoded defaults.
 """
 from pathlib import Path
 from typing import Literal
@@ -20,19 +19,19 @@ from pydantic_settings import (
     YamlConfigSettingsSource,
 )
 
-WeightsSource = Literal["dummy", "marccoru_baseline", "our_real"]
+WeightsSource = Literal["our_real"]
 
 
 class MLSettings(BaseModel):
-    weights_source: WeightsSource = "dummy"
+    weights_source: WeightsSource = "our_real"
+    checkpoint_path: Path = Path("backend/ml/checkpoints/our_real.pth")
     kagglehub_handle: str = "manastiwari1410/drift-unetpp/pytorch/v1"
     confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
     min_area_m2: float = Field(default=200.0, ge=0.0)
     patch_size: int = 256
     stride: int = 128
-    in_channels: int = 14
+    in_channels: int = 12
     biofouling_tau_days: float = 30.0
-    dummy_seed: int = 42
 
 
 class PhysicsSettings(BaseModel):

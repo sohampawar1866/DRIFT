@@ -1,8 +1,7 @@
 """backend/e2e_test.py — Phase 3 Plan 03-05 deliverable.
 
-Runs the full chain end-to-end on a real MARIDA patch with our_real weights
-(falls back to `dummy` with a warning if the checkpoint is absent) and
-enforces:
+Runs the full chain end-to-end on a real MARIDA patch with `our_real` weights
+and enforces:
 
 * Total wall-clock < 15 s (PRD Core Value hard requirement)
 * Per-stage D-15 budgets (warn-on-exceed, do not fail):
@@ -54,22 +53,6 @@ def _warm_up() -> None:
     from backend.mission import export  # noqa: F401
 
 
-def _select_weights_source() -> str:
-    """Use our_real if the checkpoint exists, else dummy (with warning).
-
-    The dummy branch still produces schema-valid output (Phase 1 proven) so
-    this lets 03-05 land BEFORE the user delivers the trained checkpoint.
-    """
-    if OUR_REAL_PATH.exists():
-        return "our_real"
-    logger.warning(
-        "e2e_test: %s not found — running with DUMMY weights. Metrics are "
-        "structural only; real IoU/precision require the trained checkpoint.",
-        OUR_REAL_PATH,
-    )
-    return "dummy"
-
-
 def run_full_chain(aoi_id: str = DEMO_AOI) -> dict:
     """Execute run_inference → forecast_drift → plan_mission → export_* with
     per-stage timing. Returns a dict of `{stage: seconds, ok: bool, totals}`.
@@ -80,8 +63,13 @@ def run_full_chain(aoi_id: str = DEMO_AOI) -> dict:
     client = TestClient(app)
     timings: dict[str, float] = {}
 
-    # Force weights selection via env; doesn't actually touch config.yaml on disk.
-    os.environ["ML__WEIGHTS_SOURCE"] = _select_weights_source()
+    if not OUR_REAL_PATH.exists():
+        raise FileNotFoundError(
+            f"e2e_test: required checkpoint not found at {OUR_REAL_PATH}"
+        )
+
+    # Force real-weight mode via env; doesn't touch config.yaml on disk.
+    os.environ["ML__WEIGHTS_SOURCE"] = "our_real"
 
     # Stage 1: inference
     t0 = time.perf_counter()
