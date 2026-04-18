@@ -3,13 +3,16 @@ import json
 import urllib.request
 import shutil
 import logging
+from pathlib import Path
 from pystac_client import Client
 import datetime
 from datetime import timedelta
 from dotenv import load_dotenv
+import rasterio
 
-# Load environment variables from .env file
-load_dotenv()
+# Load repo-root .env explicitly so behavior is stable across cwd values.
+REPO_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(REPO_ROOT / ".env")
 logger = logging.getLogger(__name__)
 
 # Grab the timeout from .env (defaults to 30 seconds if missing)
@@ -17,16 +20,80 @@ STAC_FETCH_TIMEOUT = int(os.getenv("STAC_FETCH_TIMEOUT", 30))
 
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "cache")
 
+S2_BAND_ORDER: tuple[str, ...] = (
+    "b2",   # blue
+    "b3",   # green
+    "b4",   # red
+    "b5",   # rededge1
+    "b6",   # rededge2
+    "b7",   # rededge3
+    "b8",   # nir
+    "b8a",  # nir08
+    "b11",  # swir16
+    "b12",  # swir22
+    "scl",  # scene classification layer
+)
+
+STAC_ASSET_BY_BAND = {
+    "b2": "blue",
+    "b3": "green",
+    "b4": "red",
+    "b5": "rededge1",
+    "b6": "rededge2",
+    "b7": "rededge3",
+    "b8": "nir",
+    "b8a": "nir08",
+    "b11": "swir16",
+    "b12": "swir22",
+    "scl": "scl",
+}
+
 
 def _required_band_paths(item_folder: str) -> dict:
     return {
-        "nir": os.path.join(item_folder, "nir.tif"),
-        "red": os.path.join(item_folder, "red.tif"),
+        **{band: os.path.join(item_folder, f"{band}.tif") for band in S2_BAND_ORDER},
+        "stack": os.path.join(item_folder, "stack_11band.tif"),
     }
 
 
 def _has_required_bands(paths: dict) -> bool:
-    return all(os.path.exists(paths.get(name, "")) for name in ("nir", "red"))
+    return all(os.path.exists(paths.get(name, "")) for name in S2_BAND_ORDER)
+
+
+def _build_stack_tif(paths: dict) -> None:
+    stack_path = paths["stack"]
+    first_path = paths[S2_BAND_ORDER[0]]
+
+    with rasterio.open(first_path) as first:
+        profile = first.profile.copy()
+        width = first.width
+        height = first.height
+        crs = first.crs
+        transform = first.transform
+
+    profile.update(
+        count=len(S2_BAND_ORDER),
+        dtype="float32",
+        compress="deflate",
+        nodata=None,
+    )
+
+    Path(stack_path).parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(stack_path, "w", **profile) as dst:
+        for idx, band in enumerate(S2_BAND_ORDER, start=1):
+            with rasterio.open(paths[band]) as src:
+                if src.width != width or src.height != height:
+                    raise RuntimeError(f"stac: band shape mismatch for {band}")
+                if src.crs != crs or src.transform != transform:
+                    raise RuntimeError(f"stac: band grid mismatch for {band}")
+                dst.write(src.read(1).astype("float32"), idx)
+
+
+def _ensure_stack(paths: dict) -> None:
+    if not _has_required_bands(paths):
+        raise RuntimeError("stac: required band files are missing")
+    if not os.path.exists(paths["stack"]):
+        _build_stack_tif(paths)
 
 
 def _newest_valid_cache_dir(aoi_folder: str) -> str | None:
@@ -98,23 +165,20 @@ def query_sentinel2_l2a_aws(bbox: list, max_cloud_cover: int = 15, days_back: in
     items.sort(key=lambda it: it.datetime, reverse=True)
     best_item = None
     for item in items:
-        if item.assets.get("nir") and item.assets.get("red"):
+        if all(item.assets.get(STAC_ASSET_BY_BAND[b]) for b in S2_BAND_ORDER):
             best_item = item
             break
     if best_item is None:
-        return {"error": "No Sentinel-2 item had required 'nir' and 'red' assets."}
+        return {"error": "No Sentinel-2 item had full required assets for model inference."}
     
     return {
         "id": best_item.id,
         "datetime": best_item.datetime.isoformat(),
         "cloud_cover": best_item.properties.get("eo:cloud_cover"),
         "assets": {
-            "red": best_item.assets.get("red").href if best_item.assets.get("red") else None,
-            "green": best_item.assets.get("green").href if best_item.assets.get("green") else None,
-            "blue": best_item.assets.get("blue").href if best_item.assets.get("blue") else None,
-            "nir": best_item.assets.get("nir").href if best_item.assets.get("nir") else None,
-            "red_edge_2": best_item.assets.get("rededge2").href if best_item.assets.get("rededge2") else None,
-            "swir_1": best_item.assets.get("swir16").href if best_item.assets.get("swir16") else None,
+            band: best_item.assets[asset_name].href
+            for band, asset_name in STAC_ASSET_BY_BAND.items()
+            if best_item.assets.get(asset_name)
         },
         "geometry": best_item.geometry
     }
@@ -124,8 +188,9 @@ def get_live_or_cached_imagery(aoi_id: str, bbox: list) -> dict:
     """
     Core Logic:
     1. Tries to find the newest image ID from AWS STAC.
-    2. Downloads it locally if we don't have it yet.
-    3. If AWS fails (no internet), loads the most recent local file from the cache as a fallback!
+    2. Downloads all required bands locally if not already cached.
+    3. Builds an 11-band stack used directly by inference.
+    4. If AWS fails, attempts local cache only.
     """
     aoi_folder = os.path.join(CACHE_DIR, aoi_id)
     os.makedirs(aoi_folder, exist_ok=True)
@@ -143,11 +208,16 @@ def get_live_or_cached_imagery(aoi_id: str, bbox: list) -> dict:
         if not newest_cached_id:
             return {"error": "No internet connection, and no local fallback imagery found!"}
         logger.info("stac: using local fallback cache for %s -> %s", aoi_id, newest_cached_id)
+        local_paths = _required_band_paths(os.path.join(aoi_folder, newest_cached_id))
+        try:
+            _ensure_stack(local_paths)
+        except Exception as e:
+            return {"error": f"Cached imagery exists but stack build failed: {e}"}
         
         return {
             "source": "local_fallback",
             "id": newest_cached_id,
-            "local_paths": _required_band_paths(os.path.join(aoi_folder, newest_cached_id)),
+            "local_paths": local_paths,
         }
     
     # 3. Online Success: We have a valid AWS image ID. Let's see if we already downloaded it today.
@@ -158,6 +228,10 @@ def get_live_or_cached_imagery(aoi_id: str, bbox: list) -> dict:
     # LOGICAL FIX: Check if the actual files exist, not just the folder!
     # If a previous download failed midway, the folder might exist but the .tif files are missing.
     if _has_required_bands(local_paths):
+        try:
+            _ensure_stack(local_paths)
+        except Exception as e:
+            return {"error": f"Cache stack build failed: {e}"}
         logger.info("stac: cache hit for %s -> %s", aoi_id, item_id)
         return {
             "source": "local_cache", 
@@ -170,9 +244,12 @@ def get_live_or_cached_imagery(aoi_id: str, bbox: list) -> dict:
     os.makedirs(item_folder, exist_ok=True)
     
     try:
-        # Download only the subset of bands we actually need for FDI and basics to save time (NIR, Red)
-        download_band(stac_metadata["assets"]["nir"], local_paths["nir"])
-        download_band(stac_metadata["assets"]["red"], local_paths["red"])
+        for band in S2_BAND_ORDER:
+            href = stac_metadata["assets"].get(band)
+            if not href:
+                raise RuntimeError(f"Missing STAC asset URL for band {band}")
+            download_band(href, local_paths[band])
+        _ensure_stack(local_paths)
         logger.info("stac: download success for %s at %s", aoi_id, item_folder)
     except Exception as d_err:
         logger.warning("stac: download failed for %s (%s)", aoi_id, d_err)

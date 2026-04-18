@@ -5,38 +5,16 @@ Integration layer:
 - Rebuilds a `DetectionFeatureCollection` (FROZEN pydantic)
 - Runs the real Euler Lagrangian tracker (UTM meters, windage α=0.02)
 - Adapts the ForecastEnvelope back to the legacy API dict shape
-
-Environment data policy:
-    1. If `data/env/cmems_currents_72h.nc` + `data/env/era5_winds_72h.nc` exist,
-       use them (real CMEMS + ERA5 pre-staged via scripts/fetch_demo_env.py).
-    2. Otherwise, build a minimal synthetic EnvStack in-memory (uniform weak
-       eastward current, zero wind) so the tracker still produces a defensible
-       drift trajectory for demo. The pipeline stays real; only the forcing
-       degrades gracefully.
-    3. If even that fails, fall back to mock_data.get_mock_forecast_geojson.
-
-This mirrors CONTEXT D-12 (silent auto-fallback, demo never crashes) and D-05
-(fail-loud only for the fetch script, not the service layer).
 """
 from __future__ import annotations
 
 import logging
-import os
+from pathlib import Path
 from typing import Any
 
-import numpy as np
-
-from backend.services.mock_data import get_mock_forecast_geojson
-from backend.services.runtime_flags import strict_mode_enabled
+from backend.services.env_service import fetch_or_load_env_assets
 
 logger = logging.getLogger(__name__)
-
-_SYNTH_LON_MIN, _SYNTH_LON_MAX = -180.0, 180.0
-_SYNTH_LAT_MIN, _SYNTH_LAT_MAX = -60.0, 60.0
-_SYNTH_GRID_STEP = 2.0     # degrees — coarse grid keeps env dataset small
-_SYNTH_GRID_STEP_MIN = 0.25
-_SYNTH_U_CURRENT = 0.15    # m/s eastward (gentle monsoon-scale drift)
-_SYNTH_V_CURRENT = -0.05   # m/s northward (slight southward component)
 
 
 def _iter_coords(node):
@@ -64,72 +42,6 @@ def _api_detection_bounds(api_fc: dict[str, Any]) -> tuple[float, float, float, 
     if min_lon == float("inf"):
         return None
     return (min_lon, min_lat, max_lon, max_lat)
-
-
-def _build_synthetic_env(horizon_hours: int, bbox: tuple[float, float, float, float] | None = None):
-    """Construct a minimal EnvStack with uniform weak currents + zero wind.
-
-    Only used when real CMEMS/ERA5 NetCDFs are not pre-staged on disk.
-    Produces a constant-current field (0.15 m/s east, -0.05 m/s north) over
-    the Indian Ocean bbox and zero wind. The tracker integrates this into a
-    gentle eastward drift — not scientifically accurate, but good enough to
-    demonstrate the chain when live data isn't available.
-    """
-    import xarray as xr
-
-    from backend.physics.env_data import from_synthetic
-
-    if bbox is None:
-        lon_min, lat_min, lon_max, lat_max = (
-            _SYNTH_LON_MIN,
-            _SYNTH_LAT_MIN,
-            _SYNTH_LON_MAX,
-            _SYNTH_LAT_MAX,
-        )
-        step = _SYNTH_GRID_STEP
-    else:
-        min_lon, min_lat, max_lon, max_lat = bbox
-        margin = 2.0
-        lon_min = max(_SYNTH_LON_MIN, min_lon - margin)
-        lon_max = min(_SYNTH_LON_MAX, max_lon + margin)
-        lat_min = max(_SYNTH_LAT_MIN, min_lat - margin)
-        lat_max = min(_SYNTH_LAT_MAX, max_lat + margin)
-
-        lon_span = max(0.5, lon_max - lon_min)
-        lat_span = max(0.5, lat_max - lat_min)
-        # Keep synthetic env light for API latency while preserving interpolation stability.
-        step = max(_SYNTH_GRID_STEP_MIN, max(lon_span / 48.0, lat_span / 48.0))
-
-    lons = np.arange(lon_min, lon_max + step, step)
-    lats = np.arange(lat_min, lat_max + step, step)
-    hours = np.arange(horizon_hours + 2)  # +2 buffer for interpolation at t=horizon
-    times = np.datetime64("2024-01-01T00:00:00", "ns") + (hours * np.timedelta64(3600, "s"))
-
-    shape = (len(times), len(lats), len(lons))
-    uo = np.full(shape, _SYNTH_U_CURRENT, dtype=np.float32)
-    vo = np.full(shape, _SYNTH_V_CURRENT, dtype=np.float32)
-    u10 = np.zeros(shape, dtype=np.float32)
-    v10 = np.zeros(shape, dtype=np.float32)
-
-    currents = xr.Dataset(
-        data_vars={
-            "uo": (("time", "latitude", "longitude"), uo,
-                   {"standard_name": "eastward_sea_water_velocity", "units": "m s-1"}),
-            "vo": (("time", "latitude", "longitude"), vo,
-                   {"standard_name": "northward_sea_water_velocity", "units": "m s-1"}),
-        },
-        coords={"time": times, "latitude": lats, "longitude": lons},
-    )
-    winds = xr.Dataset(
-        data_vars={
-            "u10": (("time", "latitude", "longitude"), u10,
-                    {"standard_name": "eastward_wind", "units": "m s-1"}),
-            "v10": (("time", "latitude", "longitude"), v10,
-                    {"standard_name": "northward_wind", "units": "m s-1"}),
-        },
-        coords={"time": times, "latitude": lats, "longitude": lons},
-    )
-    return from_synthetic(currents, winds, horizon_hours=horizon_hours)
 
 
 def _api_shape_to_detection_fc(api_fc: dict[str, Any]):
@@ -188,11 +100,16 @@ def _envelope_to_api_shape(env, aoi_id: str, forecast_hours: int) -> dict[str, A
     for dp in frame.density_polygons.features:
         geom = dp.geometry.model_dump() if hasattr(dp.geometry, "model_dump") else dp.geometry
         props = dict(dp.properties) if dp.properties else {}
+        feature_type = str(props.get("type", "density_contour"))
+        layer = str(props.get("layer", "drift_heatmap"))
         props.update({
             "forecast_hour": target_hour,
             "aoi_id": aoi_id,
-            "type": "density_contour",
+            "type": feature_type,
+            "layer": layer,
         })
+        if feature_type == "deposition_hotspot":
+            props.setdefault("render_color", "#ef4444")
         features.append({
             "type": "Feature",
             "geometry": geom,
@@ -219,7 +136,13 @@ def _envelope_to_api_shape(env, aoi_id: str, forecast_hours: int) -> dict[str, A
                 },
             })
 
-    return {"type": "FeatureCollection", "features": features}
+    tracker_metadata = dict(getattr(env, "tracker_metadata", {}) or {})
+    tracker_metadata.setdefault("requested_forecast_hour", target_hour)
+    return {
+        "type": "FeatureCollection",
+        "features": features,
+        "metadata": tracker_metadata,
+    }
 
 
 def simulate_drift(
@@ -228,26 +151,14 @@ def simulate_drift(
     forecast_hours: int,
 ) -> dict[str, Any]:
     """Forecast plastic drift over `forecast_hours` given detected polygons.
-
-    Falls back to mock forecast on failures unless strict mode is enabled.
     """
-    strict = strict_mode_enabled()
-
-    if os.environ.get("DRIFT_FORCE_MOCK", "").strip() == "1":
-        logger.info("drift_engine: DRIFT_FORCE_MOCK=1 → mock forecast for %s", aoi_id)
-        return get_mock_forecast_geojson(aoi_id, forecast_hours)
-
     if not detected_geojson.get("features"):
-        if strict:
-            raise RuntimeError(
-                f"drift_engine: zero detections for {aoi_id}; strict mode disallows mock fallback"
-            )
-        logger.info("drift_engine: zero detections for %s → mock forecast (nothing to drift)", aoi_id)
-        return get_mock_forecast_geojson(aoi_id, forecast_hours)
+        raise RuntimeError(f"drift_engine: zero detections for {aoi_id}; cannot run drift")
 
     try:
         from backend.core.config import Settings
         from backend.physics.tracker import forecast_drift
+        from backend.physics.env_data import load_env_stack
 
         cfg = Settings()
         # Clamp horizon to requested forecast_hours so tracker doesn't integrate past it.
@@ -258,40 +169,68 @@ def simulate_drift(
 
         detections_fc = _api_shape_to_detection_fc(detected_geojson)
         if not detections_fc.features:
-            if strict:
-                raise RuntimeError(
-                    f"drift_engine: detection conversion dropped all features for {aoi_id}"
-                )
-            logger.info("drift_engine: detections dropped in conversion → mock for %s", aoi_id)
-            return get_mock_forecast_geojson(aoi_id, forecast_hours)
+            raise RuntimeError(f"drift_engine: detection conversion dropped all features for {aoi_id}")
 
-        # Try real CMEMS/ERA5 first; if missing, build synthetic.
+        # Try dynamic cached live env assets first, then static prebaked files.
         env = None
+        env_source = ""
+        env_errors: list[str] = []
+        bbox = _api_detection_bounds(detected_geojson)
+
+        if bbox is not None:
+            try:
+                live_assets = fetch_or_load_env_assets(
+                    aoi_id,
+                    [bbox[0], bbox[1], bbox[2], bbox[3]],
+                    horizon_hours=int(forecast_hours),
+                )
+                paths = live_assets.get("paths", {}) if isinstance(live_assets, dict) else {}
+                live_cmems = Path(paths["currents"]) if isinstance(paths, dict) and paths.get("currents") else None
+                live_era5 = Path(paths["winds"]) if isinstance(paths, dict) and paths.get("winds") else None
+                if live_cmems and live_era5 and live_cmems.exists() and live_era5.exists():
+                    env = load_env_stack(live_cmems, live_era5, int(forecast_hours))
+                    env_source = str(live_assets.get("source") if isinstance(live_assets, dict) else "live_fetch")
+                    logger.info(
+                        "drift_engine: loaded dynamic env assets for %s (source=%s)",
+                        aoi_id,
+                        live_assets.get("source") if isinstance(live_assets, dict) else "unknown",
+                    )
+                else:
+                    env_errors.append("dynamic env assets unavailable or incomplete")
+            except Exception as env_e:
+                env_errors.append(f"dynamic env asset path failed: {env_e}")
+
         cmems = cfg.physics.cmems_path
         era5 = cfg.physics.era5_path
-        if cmems.exists() and era5.exists():
+        if env is None and cmems.exists() and era5.exists():
             try:
-                from backend.physics.env_data import load_env_stack
                 env = load_env_stack(cmems, era5, int(forecast_hours))
+                env_source = "static_prebaked"
                 logger.info("drift_engine: loaded real CMEMS+ERA5 for %s", aoi_id)
             except Exception as env_e:
-                logger.warning(
-                    "drift_engine: real env data load failed (%s) — falling to synthetic", env_e,
-                )
-                env = None
+                env_errors.append(f"static env load failed: {env_e}")
+        elif env is None:
+            env_errors.append(
+                f"static env files not found at {cmems} and {era5}"
+            )
+
         if env is None:
-            bbox = _api_detection_bounds(detected_geojson)
-            env = _build_synthetic_env(int(forecast_hours), bbox=bbox)
-            logger.info("drift_engine: using synthetic env (constant eastward current)")
+            details = "; ".join(env_errors) if env_errors else "unknown environment loading error"
+            raise RuntimeError(
+                "drift_engine: real environment data unavailable. "
+                "Provide live CMEMS/ERA5 credentials or valid static env files. "
+                f"Details: {details}"
+            )
 
         envelope = forecast_drift(detections_fc, cfg, env=env)
+        if isinstance(envelope.tracker_metadata, dict):
+            merged_meta = dict(envelope.tracker_metadata)
+            merged_meta["environment_source"] = env_source
+            envelope = envelope.model_copy(update={"tracker_metadata": merged_meta})
         logger.info(
             "drift_engine: real tracker OK for %s (frames=%d, particles/det=%d)",
             aoi_id, len(envelope.frames), cfg.physics.particles_per_detection,
         )
         return _envelope_to_api_shape(envelope, aoi_id, forecast_hours)
     except Exception as e:
-        if strict:
-            raise RuntimeError(f"drift_engine: real forecast failed for {aoi_id}: {e}") from e
-        logger.warning("drift_engine: real forecast failed for %s: %s → mock", aoi_id, e)
-        return get_mock_forecast_geojson(aoi_id, forecast_hours)
+        raise RuntimeError(f"drift_engine: real forecast failed for {aoi_id}: {e}") from e

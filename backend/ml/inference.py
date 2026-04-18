@@ -1,4 +1,4 @@
-"""run_inference: tile path -> DetectionFeatureCollection via dummy weights.
+"""run_inference: tile path -> DetectionFeatureCollection via real checkpoint.
 
 Pipeline (per RESEARCH.md Pattern 7):
     1. Read 11-band MARIDA patch via rasterio; reflectance rescale if needed.
@@ -27,6 +27,7 @@ from backend.core.schemas import (
     DetectionProperties,
 )
 from backend.ml.features import feature_stack
+from backend.ml.spectral import PolygonSpectralStats, gate_polygon
 from backend.ml.weights import load_weights
 
 
@@ -56,13 +57,11 @@ def _read_tile_bands(tile_path: Path) -> tuple[np.ndarray, rasterio.Affine, str]
         transform = src.transform
         crs = src.crs.to_string()
 
-    # STAC fallbacks can provide only a subset of bands (e.g., red/nir/tci).
-    # Pad to 11 channels so downstream feature extraction remains operational.
     if bands.shape[0] < 11:
-        padded = np.zeros((11, bands.shape[1], bands.shape[2]), dtype=np.float32)
-        padded[:bands.shape[0], :, :] = bands
-        bands = padded
-    elif bands.shape[0] > 11:
+        raise ValueError(
+            f"Tile {tile_path} has {bands.shape[0]} band(s); real inference requires at least 11 Sentinel-2 bands."
+        )
+    if bands.shape[0] > 11:
         bands = bands[:11, :, :]
 
     if bands.max() > 1.5:  # heuristic: raw DN
@@ -124,6 +123,9 @@ def _sliding_forward(
 def _polygonize(
     prob: np.ndarray,
     frac: np.ndarray,
+    fdi_map: np.ndarray,
+    ndvi_map: np.ndarray,
+    pi_map: np.ndarray,
     threshold: float,
     min_area_m2: float,
     transform: rasterio.Affine,
@@ -171,16 +173,31 @@ def _polygonize(
         if r1 > r0 and c1 > c0:
             conf_raw = float(prob[r0:r1, c0:c1].mean())
             frac_val = float(frac[r0:r1, c0:c1].mean())
+            fdi_mean = float(fdi_map[r0:r1, c0:c1].mean())
+            ndvi_mean = float(ndvi_map[r0:r1, c0:c1].mean())
+            pi_mean = float(pi_map[r0:r1, c0:c1].mean())
         else:
             conf_raw = float(threshold)
             frac_val = 0.0
+            fdi_mean = 0.0
+            ndvi_mean = 0.0
+            pi_mean = 0.0
+
+        stats = PolygonSpectralStats(
+            fdi_mean=fdi_mean,
+            ndvi_mean=ndvi_mean,
+            pi_mean=pi_mean,
+        )
+        gate_decision = gate_polygon(conf_raw, stats)
+        if not gate_decision.accept:
+            continue
 
         props = DetectionProperties(
             conf_raw=min(max(conf_raw, 0.0), 1.0),
-            conf_adj=min(max(conf_raw, 0.0), 1.0),   # Phase 1: no biofouling decay
+            conf_adj=gate_decision.confidence_adjusted,
             fraction_plastic=min(max(frac_val, 0.0), 1.0),
             area_m2=float(area_m2),
-            age_days_est=0,                           # Phase 1: no age model
+            age_days_est=gate_decision.age_days_est,
         )
         features.append(DetectionFeature(
             type="Feature",
@@ -195,15 +212,24 @@ def _polygonize(
 def run_inference(tile_path: Path, cfg: Settings) -> DetectionFeatureCollection:
     """Public entry: Sentinel-2 patch -> schema-valid DetectionFeatureCollection.
 
-    Phase 1: `dummy` weights. Phase 3 will swap to `our_real` via YAML flip.
+    Uses only `our_real` checkpoint weights.
     """
     bands, transform, crs = _read_tile_bands(tile_path)
     # features.feature_stack takes (H, W, N_bands) -> (H, W, 14); rearrange.
     bands_hwc = np.transpose(bands, (1, 2, 0))
     feats_hwc = feature_stack(bands_hwc)
     feats_chw = np.transpose(feats_hwc, (2, 0, 1)).astype(np.float32)
+    if feats_chw.shape[0] < cfg.ml.in_channels:
+        raise ValueError(
+            f"Feature tensor has {feats_chw.shape[0]} channel(s), but model expects {cfg.ml.in_channels}."
+        )
+    if feats_chw.shape[0] > cfg.ml.in_channels:
+        feats_chw = feats_chw[:cfg.ml.in_channels, :, :]
 
     model = load_weights(cfg)
+    threshold = getattr(model, "prediction_threshold", None)
+    if threshold is None:
+        threshold = cfg.ml.confidence_threshold
     prob, frac = _sliding_forward(
         feats_chw,
         model,
@@ -213,7 +239,10 @@ def run_inference(tile_path: Path, cfg: Settings) -> DetectionFeatureCollection:
     features = _polygonize(
         prob,
         frac,
-        threshold=cfg.ml.confidence_threshold,
+        fdi_map=feats_chw[11],
+        ndvi_map=feats_chw[12],
+        pi_map=feats_chw[13],
+        threshold=float(threshold),
         min_area_m2=cfg.ml.min_area_m2,
         transform=transform,
         src_crs=crs,

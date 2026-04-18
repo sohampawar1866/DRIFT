@@ -1,91 +1,33 @@
-"""ai_detector — thin service wrapper over backend.ml.inference.run_inference.
+"""ai_detector — service wrapper over backend.ml.inference.run_inference.
 
-Integration layer: adapts the FROZEN pydantic DetectionFeatureCollection from
-the real inference pipeline into the legacy API dict shape the frontend
-expects (`id`, `confidence`, `area_sq_meters`, `age_days`, `type`).
-
-Fallback policy (CONTEXT D-12 — demo must not crash):
-    1. Try real inference on the AOI's pre-staged MARIDA tile.
-    2. On ANY exception, log and silently fall back to mock_data.
-
-To force the mock path for debugging: set `DRIFT_FORCE_MOCK=1` in env.
+Runs real inference only (no mock fallback). Tile resolution prefers explicit
+input tile path, then live/cached STAC imagery.
 """
 from __future__ import annotations
 
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
-from backend.services.aoi_registry import demo_tile_for, resolve
-from backend.services.mock_data import get_mock_detection_geojson
-from backend.services.runtime_flags import strict_mode_enabled
+from backend.services.aoi_registry import resolve
+from backend.services.env_service import get_environment_summary
+from backend.physics.bio_fouling import apply_environmental_biofouling
 
 logger = logging.getLogger(__name__)
-
-# Legacy bbox map kept for STAC fallback compat with older calls.
-AOI_BBOX_MAP = {
-    "mumbai": [72.7, 18.8, 73.0, 19.1],
-    "gulf_of_mannar": [78.6, 8.5, 79.5, 9.2],
-    "chennai": [80.2, 12.8, 80.5, 13.2],
-    "andaman": [92.5, 11.5, 93.0, 12.0],
-}
 
 _CUSTOM_AOI_HALF_SPAN_DEG = 0.03
 
 
-def _rebase_polygons_to_aoi(fc, aoi_id: str):
-    """Translate polygon coordinates so the detection-cluster centroid lands at
-    the AOI's declared center (WGS84 lon/lat).
-
-    MARIDA tiles are globally sourced — none are physically in the Indian Ocean
-    AOIs the frontend shows. The inference is real; only the display coordinates
-    get shifted. This keeps the demo geographically coherent (clicking "Mumbai"
-    shows polygons near Mumbai) without retraining or re-staging tiles.
-
-    Returns a NEW FeatureCollection with translated coords; input is untouched.
-    Falls back to `fc` unchanged if the AOI is unknown.
-    """
-    from backend.services.aoi_registry import resolve
-
-    entry = resolve(aoi_id)
-    if entry is None or not fc.features:
-        return fc
-
-    target_lon, target_lat = entry["center"]
-
-    # Compute the cluster centroid (mean of all polygon first-point coords).
-    from shapely.geometry import shape as shp_shape
-    centroids = []
-    for feat in fc.features:
-        poly = shp_shape(feat.geometry.model_dump() if hasattr(feat.geometry, "model_dump") else feat.geometry)
-        c = poly.centroid
-        centroids.append((float(c.x), float(c.y)))
-    src_lon = sum(c[0] for c in centroids) / len(centroids)
-    src_lat = sum(c[1] for c in centroids) / len(centroids)
-    dlon = target_lon - src_lon
-    dlat = target_lat - src_lat
-
-    from backend.core.schemas import DetectionFeature, DetectionFeatureCollection
-    from geojson_pydantic import Polygon
-
-    new_feats: list[DetectionFeature] = []
-    for feat in fc.features:
-        geom_dict = feat.geometry.model_dump() if hasattr(feat.geometry, "model_dump") else dict(feat.geometry)
-        rings = geom_dict.get("coordinates", [])
-        new_rings = [
-            [[pt[0] + dlon, pt[1] + dlat] for pt in ring] for ring in rings
-        ]
-        new_feats.append(DetectionFeature(
-            type="Feature",
-            geometry=Polygon(type="Polygon", coordinates=new_rings),
-            properties=feat.properties,
-        ))
-    return DetectionFeatureCollection(type="FeatureCollection", features=new_feats)
+def _predicted_class(confidence: float) -> str:
+    if confidence >= 0.80:
+        return "macroplastic_high_risk"
+    if confidence >= 0.60:
+        return "macroplastic_likely"
+    return "macroplastic_low_conf"
 
 
-def _detection_fc_to_api_shape(fc, aoi_id: str) -> dict[str, Any]:
+def _detection_fc_to_api_shape(fc, aoi_id: str, env_meta: dict[str, Any] | None = None) -> dict[str, Any]:
     """Adapt FROZEN DetectionFeatureCollection → legacy API dict shape.
 
     Legacy per-feature `properties`:
@@ -97,22 +39,45 @@ def _detection_fc_to_api_shape(fc, aoi_id: str) -> dict[str, Any]:
         fraction_plastic: float           bonus — sub-pixel coverage (new)
     """
     features: list[dict[str, Any]] = []
+    env_meta = env_meta or {}
+    decay_k = float(env_meta.get("confidence_decay_k", 0.03))
+    water_temp = env_meta.get("water_temp_c")
+    chlorophyll = env_meta.get("chlorophyll_mg_m3")
+
     for i, feat in enumerate(fc.features):
         p = feat.properties
         geom = feat.geometry.model_dump() if hasattr(feat.geometry, "model_dump") else feat.geometry
+        conf = round(p.conf_adj, 3)
         features.append({
             "type": "Feature",
             "geometry": geom,
             "properties": {
                 "id": f"{aoi_id}_{i:03d}",
-                "confidence": round(p.conf_adj, 3),
+                "confidence": conf,
                 "area_sq_meters": round(p.area_m2, 2),
                 "age_days": p.age_days_est,
                 "type": "macroplastic",
                 "fraction_plastic": round(p.fraction_plastic, 3),
+                "predicted_class": _predicted_class(conf),
+                "confidence_decay_k": round(decay_k, 6),
+                "water_temp_c": None if water_temp is None else round(float(water_temp), 3),
+                "chlorophyll_mg_m3": None if chlorophyll is None else round(float(chlorophyll), 4),
             },
         })
     return {"type": "FeatureCollection", "features": features}
+
+
+def _env_bbox_for(aoi_id: str, bbox_override: list[float] | None) -> list[float]:
+    if bbox_override is not None:
+        return bbox_override
+    entry = resolve(aoi_id)
+    if entry is not None:
+        (west, south), (east, north) = entry["bounds"]
+        return [west, south, east, north]
+    custom = _bbox_from_custom_aoi_id(aoi_id)
+    if custom is not None:
+        return custom
+    return [72.7, 18.8, 73.0, 19.1]
 
 
 def _iter_points(coords):
@@ -214,52 +179,38 @@ def _resolve_tile(aoi_id: str, s2_tile_path: str | None, bbox_override: list[flo
 
     Precedence:
         1. Explicit `s2_tile_path` query param (power user / pre-staged tile)
-        2. AOI registry demo tile (hardcoded per-AOI MARIDA patch)
-        3. STAC cache lookup (stac_service — online+offline hybrid)
-        4. None → caller falls back to mock
-
-    None return means "no tile available; caller MUST fall back to mock".
+        2. STAC imagery for provided bbox
+        3. STAC imagery for resolved AOI bounds
     """
     if s2_tile_path:
         p = Path(s2_tile_path)
         if p.exists():
             return p
-        logger.warning("ai_detector: provided s2_tile_path does not exist: %s", p)
+        raise RuntimeError(f"ai_detector: provided s2_tile_path does not exist: {p}")
 
-    # If caller provided a spatial query, prefer live/cache STAC for that exact bbox.
-    if bbox_override is not None:
+    query_bbox = bbox_override
+    if query_bbox is None:
+        entry = resolve(aoi_id)
+        if entry is not None:
+            (west, south), (east, north) = entry["bounds"]
+            query_bbox = [west, south, east, north]
+        else:
+            query_bbox = _bbox_from_custom_aoi_id(aoi_id)
+
+    if query_bbox is not None:
         try:
             from backend.services.stac_service import get_live_or_cached_imagery
-            stac_result = get_live_or_cached_imagery(aoi_id, bbox_override)
+            stac_result = get_live_or_cached_imagery(aoi_id, query_bbox)
             if stac_result and "error" not in stac_result:
                 paths = stac_result.get("local_paths", {})
-                for band in ("tci", "nir", "red", "b8", "b4"):
-                    cand = paths.get(band)
-                    if cand and Path(cand).exists():
-                        return Path(cand)
+                stack = paths.get("stack")
+                if stack and Path(stack).exists():
+                    return Path(stack)
+                raise RuntimeError(
+                    f"ai_detector: STAC response for {aoi_id} missing usable stack path"
+                )
         except Exception as e:  # pragma: no cover — network flake
-            logger.warning("ai_detector: STAC lookup failed for %s (bbox override): %s", aoi_id, e)
-
-    tile = demo_tile_for(aoi_id)
-    if tile is not None:
-        return tile
-
-    # STAC fallback for aoi_ids not in registry (keeps legacy behavior).
-    # Lazy import: pystac_client is an optional dep; keep ai_detector importable
-    # in minimal deploys where STAC isn't needed.
-    if aoi_id in AOI_BBOX_MAP:
-        try:
-            from backend.services.stac_service import get_live_or_cached_imagery
-            stac_result = get_live_or_cached_imagery(aoi_id, AOI_BBOX_MAP[aoi_id])
-            if stac_result and "error" not in stac_result:
-                paths = stac_result.get("local_paths", {})
-                # Prefer a multi-band product; else any band — inference handles both.
-                for band in ("tci", "nir", "red", "b8", "b4"):
-                    cand = paths.get(band)
-                    if cand and Path(cand).exists():
-                        return Path(cand)
-        except Exception as e:  # pragma: no cover — network flake
-            logger.warning("ai_detector: STAC lookup failed for %s: %s", aoi_id, e)
+            raise RuntimeError(f"ai_detector: STAC lookup failed for {aoi_id}: {e}") from e
 
     return None
 
@@ -273,46 +224,39 @@ def detect_macroplastic(
     """Detect sub-pixel plastic patches for an AOI.
 
     Returns a GeoJSON FeatureCollection dict in the legacy API shape the
-    frontend expects. In strict mode, resolution/inference failures raise.
+    frontend expects.
     """
-    strict = strict_mode_enabled()
-
-    if os.environ.get("DRIFT_FORCE_MOCK", "").strip() == "1":
-        logger.info("ai_detector: DRIFT_FORCE_MOCK=1 → serving mock for %s", aoi_id)
-        return get_mock_detection_geojson(aoi_id)
-
     bbox_override = _resolve_spatial_bbox(aoi_id, bbox, polygon)
+    env_meta: dict[str, Any] | None = get_environment_summary(
+        aoi_id,
+        _env_bbox_for(aoi_id, bbox_override),
+        horizon_hours=72,
+        ensure_live=True,
+    )
+
     tile = _resolve_tile(aoi_id, s2_tile_path, bbox_override=bbox_override)
     if tile is None:
-        msg = f"ai_detector: no tile resolved for {aoi_id}"
-        if strict:
-            raise RuntimeError(f"{msg}; strict mode disallows mock fallback")
-        logger.info("ai_detector: no tile resolved for %s → serving mock", aoi_id)
-        return get_mock_detection_geojson(aoi_id)
+        raise RuntimeError(f"ai_detector: no Sentinel-2 tile resolved for {aoi_id}")
 
     try:
-        # Lazy import — keeps the service importable even if heavy ML deps fail
-        # (e.g. torch missing in a minimal API-only deploy). Fallback still works.
         from backend.core.config import Settings
         from backend.ml.inference import run_inference
 
         cfg = Settings()
         fc = run_inference(tile, cfg)
-        fc = _rebase_polygons_to_aoi(fc, aoi_id)
+        if env_meta is not None:
+            fc, bio_meta = apply_environmental_biofouling(
+                fc,
+                water_temp_c=float(env_meta["water_temp_c"]),
+                chlorophyll_mg_m3=float(env_meta["chlorophyll_mg_m3"]),
+            )
+            env_meta = {**env_meta, **bio_meta}
         logger.info(
-            "ai_detector: real inference OK for %s (tile=%s, features=%d, rebased)",
+            "ai_detector: real inference OK for %s (tile=%s, features=%d)",
             aoi_id, tile.name, len(fc.features),
         )
-        # If the model produced zero detections, the API shape is still valid
-        # ({features:[]}). Frontend will handle it gracefully.
-        return _detection_fc_to_api_shape(fc, aoi_id)
+        return _detection_fc_to_api_shape(fc, aoi_id, env_meta=env_meta)
     except Exception as e:
-        if strict:
-            raise RuntimeError(
-                f"ai_detector: real inference failed for {aoi_id} (tile={tile}): {e}"
-            ) from e
-        logger.warning(
-            "ai_detector: real inference failed for %s (tile=%s): %s → fallback to mock",
-            aoi_id, tile, e,
-        )
-        return get_mock_detection_geojson(aoi_id)
+        raise RuntimeError(
+            f"ai_detector: real inference failed for {aoi_id} (tile={tile}): {e}"
+        ) from e

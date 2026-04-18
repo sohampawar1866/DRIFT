@@ -64,22 +64,15 @@ uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 
 ## 5) Runtime modes
 
-Default mode is demo-safe and allows mock fallback when real data/ML is unavailable.
+Backend is real-data only.
 
-- Force mock: `DRIFT_FORCE_MOCK=1`
-- Strict mode (disable silent fallback):
-  - `DRIFT_STRICT_MODE=1`
-  - or `DRIFT_DISABLE_FALLBACKS=1`
-
-Example strict run:
-
-```bash
-DRIFT_STRICT_MODE=1 uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-```
+- No mock-mode endpoints are supported.
+- Inference requires a real checkpoint and real Sentinel-2 inputs.
+- Forecast requires real CMEMS/ERA5 assets (live fetch or valid static files).
 
 ## 6) Data prerequisites for real chain
 
-For true non-mock behavior:
+Required:
 
 - model checkpoint for real weights:
   - place the file inside `backend/ml/checkpoints/`
@@ -87,11 +80,25 @@ For true non-mock behavior:
   - set `ml.weights_source: our_real` in `backend/config.yaml`
 - expected save format: `torch.save(model.state_dict(), path)`
 - MARIDA dataset under `DRIFT/MARIDA` (patches and splits)
-- optional physics NetCDF files:
+- physics NetCDF files (required for drift forecast):
   - `data/env/cmems_currents_72h.nc`
   - `data/env/era5_winds_72h.nc`
 
-If env files are missing, forecast uses synthetic currents (schema-valid, less realistic).
+Live ingestion (CMEMS + ERA5 dynamic subset fetch with disk cache):
+
+- enabled by default; disable with `DRIFT_ENABLE_LIVE_ENV=0`
+- cache TTL hours: `DRIFT_ENV_CACHE_TTL_HOURS` (default 6)
+- CMEMS credentials required:
+  - `COPERNICUSMARINE_SERVICE_USERNAME`
+  - `COPERNICUSMARINE_SERVICE_PASSWORD`
+- ERA5 credentials required:
+  - `CDSAPI_KEY` or a valid `~/.cdsapirc`
+- optional dataset overrides:
+  - `DRIFT_CMEMS_PHY_DATASET_ID`
+  - `DRIFT_CMEMS_BGC_DATASET_ID`
+
+If live credentials and valid static env files are both unavailable, forecast
+requests fail with a clear runtime error.
 
 ## 7) Validation
 
@@ -105,37 +112,15 @@ python -m pytest -q backend/tests
 Targeted suites:
 
 ```bash
-python -m pytest -q backend/tests/integration/test_inference_dummy.py
 python -m pytest -q backend/tests/integration/test_tracker_synth.py
 python -m pytest -q backend/tests/integration/test_planner_synth.py
 ```
 
 Some tests are skipped when required data (for example MARIDA patches) is unavailable.
 
-## 8) Chain runners
+## 8) Chain runner
 
-Dummy chain:
-
-```bash
-python scripts/run_full_chain_dummy.py --use-synth-env
-```
-
-Real chain (strict, no fallback):
-
-```bash
-python scripts/run_full_chain_real.py \
-  --tile /absolute/path/to/tile.tif \
-  --aoi gulf_of_mannar \
-  --origin 78.9 9.2 \
-  --no-fallback
-```
-Dummy chain:
-
-```bash
-python scripts/run_full_chain_dummy.py --use-synth-env
-```
-
-Real chain (strict, no fallback):
+Real chain:
 
 ```bash
 python scripts/run_full_chain_real.py \

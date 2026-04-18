@@ -1,4 +1,4 @@
-"""Integration test: run_inference on a real MARIDA patch with dummy weights.
+"""Integration test: run_inference on a real MARIDA patch with real weights.
 
 This is the Phase 1 exit gate for ML-04. Asserts:
   - Output is a schema-valid DetectionFeatureCollection (round-trip via JSON).
@@ -31,7 +31,7 @@ def sample_tile() -> Path:
     pytest.skip("No MARIDA patch found")
 
 
-def test_dummy_inference_emits_schema_valid_fc(sample_tile: Path):
+def test_real_inference_emits_schema_valid_fc(sample_tile: Path):
     cfg = Settings()
     fc = run_inference(sample_tile, cfg)
 
@@ -44,25 +44,21 @@ def test_dummy_inference_emits_schema_valid_fc(sample_tile: Path):
     assert back.model_dump(by_alias=True) == fc.model_dump(by_alias=True)
 
 
-def test_dummy_inference_polygon_count_sane(sample_tile: Path):
+def test_real_inference_polygon_count_sane(sample_tile: Path):
     cfg = Settings()
     fc = run_inference(sample_tile, cfg)
     n = len(fc.features)
-    # Phase 1 dummy weights should produce 1-499 polygons on a 256x256 patch.
-    # The mask_head.bias.data.fill_(0.5) shift in weights.py dummy branch
-    # (Plan 04) guarantees strictly non-empty output under the 0.5 threshold.
-    # If N == 0: bias shift failed to land, or threshold too high. Check
-    #   backend/ml/weights.py for `mask_head.bias.data.fill_(0.5)`.
+    # Real inference should detect at least one polygon and avoid pathological
+    # over-segmentation on a single patch.
     # If N > 500: noise storm -- bump min_area_m2 or threshold in config.yaml.
     assert n > 0, (
-        f"Dummy inference produced 0 polygons. The bias shift "
-        f"`model.mask_head.bias.data.fill_(0.5)` in weights.py dummy branch "
-        f"should guarantee n > 0. Check backend/ml/weights.py."
+        "Real inference produced 0 polygons on a MARIDA patch. "
+        "Check checkpoint compatibility and confidence threshold settings."
     )
     assert n < 500, f"Noise storm: {n} polygons (>=500 means tune config.yaml)"
 
 
-def test_dummy_inference_properties_in_bounds(sample_tile: Path):
+def test_real_inference_properties_in_bounds(sample_tile: Path):
     cfg = Settings()
     fc = run_inference(sample_tile, cfg)
     for feat in fc.features:
@@ -73,5 +69,5 @@ def test_dummy_inference_properties_in_bounds(sample_tile: Path):
         assert p.area_m2 >= cfg.ml.min_area_m2, (
             f"area_m2 {p.area_m2} < min_area_m2 {cfg.ml.min_area_m2}"
         )
-        assert p.age_days_est == 0  # Phase 1 has no age model
+        assert 0 <= p.age_days_est <= 90
         assert p.cls == "plastic"
