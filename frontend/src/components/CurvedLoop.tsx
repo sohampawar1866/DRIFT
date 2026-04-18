@@ -1,4 +1,5 @@
-import { useRef, useEffect, useState, useMemo, useId, FC, PointerEvent } from 'react';
+import { useRef, useEffect, useState, useMemo, useId } from 'react';
+import type { FC, PointerEvent as ReactPointerEvent } from 'react';
 
 interface CurvedLoopProps {
   marqueeText?: string;
@@ -27,6 +28,7 @@ const CurvedLoop: FC<CurvedLoopProps> = ({
   const pathRef = useRef<SVGPathElement | null>(null);
   const [spacing, setSpacing] = useState(0);
   const [offset, setOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
   const uid = useId();
   const pathId = `curve-${uid}`;
   const pathD = `M-100,40 Q500,${40 + curveAmount} 1540,40`;
@@ -77,15 +79,16 @@ const CurvedLoop: FC<CurvedLoopProps> = ({
     return () => cancelAnimationFrame(frame);
   }, [spacing, speed, ready]);
 
-  const onPointerDown = (e: PointerEvent) => {
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (!interactive) return;
     dragRef.current = true;
+    setIsDragging(true);
     lastXRef.current = e.clientX;
     velRef.current = 0;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   };
 
-  const onPointerMove = (e: PointerEvent) => {
+  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (!interactive || !dragRef.current || !textPathRef.current) return;
     const dx = e.clientX - lastXRef.current;
     lastXRef.current = e.clientX;
@@ -102,10 +105,11 @@ const CurvedLoop: FC<CurvedLoopProps> = ({
   const endDrag = () => {
     if (!interactive) return;
     dragRef.current = false;
+    setIsDragging(false);
     dirRef.current = velRef.current > 0 ? 'right' : 'left';
   };
 
-  const cursorStyle = interactive ? (dragRef.current ? 'grabbing' : 'grab') : 'auto';
+  const cursorStyle = interactive ? (isDragging ? 'grabbing' : 'grab') : 'auto';
 
   return (
     <div

@@ -59,7 +59,7 @@ export const LandingPage: React.FC = () => {
   useEffect(() => {
     if (!sequenceRef.current || !vid1Ref.current || !vid2Ref.current || !vid3Ref.current || !vid4Ref.current) return;
 
-    let ctx = gsap.context(() => {
+    const ctx = gsap.context(() => {
       // Initialize states to strictly top-left edge anchoring and wire properties to GPU layer to make it buttery smooth
       gsap.set([vid1Ref.current, vid2Ref.current, vid3Ref.current, vid4Ref.current], {
         top: "0%",
@@ -146,22 +146,22 @@ export const LandingPage: React.FC = () => {
     {
       icon: Satellite,
       title: 'Satellite-Powered Detection',
-      desc: 'Queries the AWS Earth Search STAC API for Sentinel-2 L2A multi-spectral imagery (NIR, Red, SWIR bands) to identify sub-pixel macroplastic concentrations invisible to the naked eye.',
+      desc: 'Fetches Sentinel-2 L2A imagery from AWS Earth Search STAC and analyzes NIR, Red, and SWIR bands to detect sub-pixel macroplastic signatures.',
     },
     {
       icon: Waves,
       title: 'Lagrangian Drift Forecasting',
-      desc: 'Predicts where detected debris will travel over 24h, 48h, and 72h windows using CMEMS ocean current vectors and ERA5 wind data fused through Euler-step particle tracking.',
+      desc: 'Forecasts debris movement across 24h, 48h, and 72h windows by combining CMEMS current vectors with ERA5 wind fields in an Euler-step tracker.',
     },
     {
       icon: Map,
       title: 'Interactive AOI Mapping',
-      desc: 'Click 4 points on a dark-matter basemap to define a target ocean sector. A 100×100 grid land-check ensures your polygon is strictly over water before analysis begins.',
+      desc: 'Define a target ocean sector directly on the map. A 100x100 land-check grid validates that the selected AOI remains strictly over water.',
     },
     {
       icon: Ship,
       title: 'Cleanup Mission Planner',
-      desc: 'Generates optimal Coast Guard vessel routes using TSP heuristics over high-density hotspots, and exports the route as a downloadable GPX file for direct nav-system integration.',
+      desc: 'Builds optimized Coast Guard vessel routes over high-density hotspots using TSP heuristics, then exports mission paths as GPX files.',
     },
   ] as Array<{ icon: LucideIcon; title: string; desc: string }>;
 
@@ -169,17 +169,17 @@ export const LandingPage: React.FC = () => {
     {
       step: '01',
       title: 'Define Your Sector',
-      desc: 'Open the D.R.I.F.T. Map and click 4 points on the ocean to draw a target polygon. The system validates that no land is enclosed — if it is, you\'ll be prompted to redraw.',
+      desc: 'Open the D.R.I.F.T. map and mark your target region. The system validates ocean-only boundaries before analysis starts.',
     },
     {
       step: '02',
       title: 'Analyze & Detect',
-      desc: 'Hit "Initialize AWS Deep Scan" and D.R.I.F.T. fetches the latest Sentinel-2 satellite tile, runs AI-based sub-pixel detection, and overlays plastic density zones in real-time.',
+      desc: 'Run Initialize AWS Deep Scan to fetch the latest Sentinel-2 tile, execute sub-pixel detection, and render plastic density overlays.',
     },
     {
       step: '03',
       title: 'Forecast & Deploy',
-      desc: 'View 24h/48h/72h drift trajectories, inspect coastal impact zones with intensity heat-mapping, and download a GPX mission file for cleanup vessel deployment.',
+      desc: 'Inspect 24h, 48h, and 72h drift paths, evaluate projected coastal impact, and export a GPX mission for field deployment.',
     },
   ];
 
@@ -259,25 +259,7 @@ export const LandingPage: React.FC = () => {
       </div>
 
       {/* ═══ MAIN CONTENT ═══ */}
-      <main className="relative z-20 bg-[#0D1417] pt-6 pb-">
-        {/* <style>
-          {`
-            @keyframes wave-scroll {
-              0% { transform: translateX(0); }
-              100% { transform: translateX(-50%); }
-            }
-            .animate-wave {
-              animation: wave-scroll 3s linear infinite;
-              will-change: transform;
-            }
-          `}
-        </style>
-        <div className="absolute top-0 left-0 w-full overflow-hidden leading-[0] transform -translate-y-full">
-          <svg className="relative block w-[200vw] h-[40px] sm:h-[60px] md:h-[80px] animate-wave" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2400 100" preserveAspectRatio="none">
-            <path d="M0,50 Q300,100 600,50 T1200,50 L1200,100 L0,100 Z" fill="#0D1417" />
-            <path d="M1200,50 Q1500,100 1800,50 T2400,50 L2400,100 L1200,100 Z" fill="#0D1417" />
-          </svg>
-        </div> */}
+      <main className="relative z-20 bg-[#0D1417] pt-6 pb-20 md:pb-24">
 
         {/* ── SECTION 1: THE PROBLEM ── */}
         <section className="max-w-5xl mx-auto px-6 mb-40">
@@ -287,31 +269,83 @@ export const LandingPage: React.FC = () => {
             viewport={{ once: true, amount: 0.3 }}
             transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
           >
-            <p className="text-xs font-manrope uppercase tracking-[0.3em] text-secondary mb-6">The Problem</p>
-            <h2 className="text-4xl md:text-7xl font-jakarta font-normal tracking-tight mb-10">
-              8 million tons of plastic <span className="text-primary italic">enter</span> our oceans<br />every single year.
+
+{/* Main Content Section */}
+          <motion.div>
+            {/* Hero Heading */}
+            <h2 className="text-4xl md:text-7xl font-jakarta font-normal tracking-tight mb-8 mt-20">
+              11 million tonnes of plastic <span className="text-primary italic">enter</span> our oceans<br />every single year.
             </h2>
-            <div className="grid md:grid-cols-2 gap-16 text-lg md:text-xl font-manrope font-light leading-relaxed text-text-main/70">
+            
+            {/* Core Problem Statement */}
+            <p className="max-w-3xl text-xl md:text-3xl font-manrope font-light leading-relaxed text-text-main/80 mb-10">
+              The core challenge: floating debris is hard to isolate in standard imagery, difficult to monitor manually, and often identified too late for effective interception.
+            </p>
+            
+            {/* Problem / Solution Grid */}
+            <div className="max-w-4xl grid md:grid-cols-2 gap-8 text-base md:text-lg font-manrope font-light leading-relaxed text-text-main/70 mb-16">
               <p>
-                In satellite imagery, a single pixel at 10-meter resolution covers enormous areas. Macroplastics often occupy less than 20% of a pixel, rendering them invisible to standard classification. Existing monitoring relies on ship surveys and beach cleanups — reactive approaches that miss 99% of floating debris.
+                <strong className="text-text-main font-medium">The Problem:</strong> Traditional surveys do not scale in open water. Even 10-meter satellite pixels can hide macroplastic patches that occupy only a small fraction of each pixel.
               </p>
               <p>
-                D.R.I.F.T. changes this paradigm. By fusing multi-spectral satellite bands with AI-driven sub-pixel analysis, we detect plastic patches from space, predict where ocean currents will carry them, and generate actionable deployment plans — all before debris reaches the coastline.
+                <strong className="text-text-main font-medium">The Solution:</strong> D.R.I.F.T. combines sub-pixel AI detection, spectral disambiguation, and drift physics so teams can act before pollution reaches the coastline.
               </p>
+            </div>
+
+            {/* Technical Pillars Grid */}
+            <div className="grid md:grid-cols-2 gap-6 mb-12">
+              
+              {/* Card 1 */}
+              <div className="bg-surface-container rounded-3xl p-8 border border-white/5 hover:border-primary/30 transition-colors duration-300">
+                <p className="text-xs font-manrope uppercase tracking-widest text-secondary/90 mb-3">01. Sub-Pixel AI</p>
+                <h3 className="text-2xl font-jakarta font-medium mb-3 text-text-main">Seeing what a pixel hides.</h3>
+                <p className="text-sm md:text-base font-manrope font-light leading-relaxed text-text-main/65">
+                  Using a dual-head U-Net architecture, D.R.I.F.T. performs sub-pixel fraction regression to detect macroplastics that occupy less than 20% of a standard satellite pixel.
+                </p>
+              </div>
+
+              {/* Card 2 */}
+              <div className="bg-surface-container rounded-3xl p-8 border border-white/5 hover:border-secondary/30 transition-colors duration-300">
+                <p className="text-xs font-manrope uppercase tracking-widest text-primary/90 mb-3">02. Spectral Analysis</p>
+                <h3 className="text-2xl font-jakarta font-medium mb-3 text-text-main">Eliminating false positives.</h3>
+                <p className="text-sm md:text-base font-manrope font-light leading-relaxed text-text-main/65">
+                  We calculate the Floating Debris Index (FDI) across Red-Edge, NIR, and SWIR bands to accurately distinguish weathered plastic from natural lookalikes like sea foam or Sargassum.
+                </p>
+              </div>
+
+              {/* Card 3 */}
+              <div className="bg-surface-container rounded-3xl p-8 border border-white/5 hover:border-tertiary/30 transition-colors duration-300">
+                <p className="text-xs font-manrope uppercase tracking-widest text-tertiary/90 mb-3">03. Temporal Logic</p>
+                <h3 className="text-2xl font-jakarta font-medium mb-3 text-text-main">Beating the biofouling trap.</h3>
+                <p className="text-sm md:text-base font-manrope font-light leading-relaxed text-text-main/65">
+                  As ocean plastic ages, algal biofilm dampens its infrared signature. Our system applies confidence-decay heuristics to continuously track debris even as its spectral signal degrades.
+                </p>
+              </div>
+
+              {/* Card 4 */}
+              <div className="bg-surface-container rounded-3xl p-8 border border-white/5 hover:border-primary/30 transition-colors duration-300">
+                <p className="text-xs font-manrope uppercase tracking-widest text-secondary/90 mb-3">04. Drift Forecasting</p>
+                <h3 className="text-2xl font-jakarta font-medium mb-3 text-text-main">Predicting the path.</h3>
+                <p className="text-sm md:text-base font-manrope font-light leading-relaxed text-text-main/65">
+                  Integrating real-time CMEMS currents and ERA5 wind data, an Euler-step Lagrangian tracker generates 72-hour drift forecasts to map cleanup mission waypoints.
+                </p>
+              </div>
+
             </div>
           </motion.div>
 
           <motion.div
-            className="w-full h-[1px] bg-surface-variant mt-24 origin-left"
+            className="w-full h-[1px] bg-surface-variant mt-12 origin-left"
             initial={{ scaleX: 0 }}
             whileInView={{ scaleX: 1 }}
             viewport={{ once: true }}
             transition={{ duration: 1.5, delay: 0.2, ease: 'easeInOut' }}
           />
+          </motion.div>
         </section>
 
         {/* ── KEY STATS BAR ── */}
-        <section className="max-w-6xl mx-auto px-6 mb-40">
+        <section className="max-w-7xl mx-auto px-6 mb-20">
           <motion.div
             className="grid grid-cols-2 md:grid-cols-4 gap-6"
             variants={staggerContainer}
@@ -344,7 +378,7 @@ export const LandingPage: React.FC = () => {
               Ready to scan the ocean?
             </h2>
             <p className="type-body-lg font-manrope font-light leading-relaxed mb-10 md:mb-12 text-text-main/60">
-              Define a target sector, detect floating debris, trace its future path, and plan a Coast Guard mission — all from your browser.
+              Define a target sector, detect floating debris, project its trajectory, and export an actionable Coast Guard mission plan from the browser.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-3 md:gap-4 justify-center w-full sm:w-auto">
