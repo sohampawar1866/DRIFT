@@ -252,11 +252,11 @@ export const LandingForm: React.FC = () => {
           },
         });
       } catch (err: unknown) {
-        console.error(err);
+        console.error('[deploy] failed:', err);
         const msg = apiErrorMessage(err);
-        alert(msg.includes('ocean') || msg.includes('land')
-          ? msg
-          : 'Error deploying sector. Please try an oceanic location.');
+        // Always show the actual backend error — masking it makes coastal
+        // edge cases impossible to diagnose. Ocean/land hints stay verbatim.
+        alert(`Deploy failed: ${msg}`);
         setDrawingPoints([]);
         setCurrentSelection(null);
         setProcessingSelection(null);
