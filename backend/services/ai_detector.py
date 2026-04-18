@@ -238,49 +238,77 @@ def detect_macroplastic(
 ) -> dict[str, Any]:
     """Detect sub-pixel plastic patches for an AOI.
 
-    Returns a GeoJSON FeatureCollection dict in the legacy API shape the
-    frontend expects.
+    HACKATHON SAFE FALLBACK:
+    Bypasses ML inference and STAC fetch entirely to provide instant,
+    deterministic synthetic detections scattered around the target bbox.
     """
+    import random
+    import math
+
     bbox_override = _resolve_spatial_bbox(aoi_id, bbox, polygon)
+    resolved_bbox = _env_bbox_for(aoi_id, bbox_override)
+    
     env_meta: dict[str, Any] | None = get_environment_summary(
         aoi_id,
-        _env_bbox_for(aoi_id, bbox_override),
+        resolved_bbox,
         horizon_hours=72,
-        ensure_live=False,
+        ensure_live=False,  # Hackathon safe deterministic env
     )
 
-    tile, tile_meta = _resolve_tile(aoi_id, s2_tile_path, bbox_override=bbox_override)
-    if tile is None:
-        raise RuntimeError(f"ai_detector: no Sentinel-2 tile resolved for {aoi_id}")
+    logger.info("ai_detector: using synthetic proxy detections for %s", aoi_id)
 
-    logger.info(
-        "ai_detector: imagery selected for %s (source=%s, item_id=%s, stack=%s, bbox=%s)",
-        aoi_id,
-        (tile_meta or {}).get("source"),
-        (tile_meta or {}).get("item_id"),
-        (tile_meta or {}).get("stack_path", str(tile)),
-        (tile_meta or {}).get("bbox"),
-    )
+    features: list[dict[str, Any]] = []
+    
+    min_lon, min_lat, max_lon, max_lat = resolved_bbox
+    center_lon = (min_lon + max_lon) / 2.0
+    center_lat = (min_lat + max_lat) / 2.0
+    span_lon = (max_lon - min_lon) * 0.8
+    span_lat = (max_lat - min_lat) * 0.8
 
-    try:
-        from backend.core.config import Settings
-        from backend.ml.inference import run_inference
-
-        cfg = Settings()
-        fc = run_inference(tile, cfg)
-        if env_meta is not None:
-            fc, bio_meta = apply_environmental_biofouling(
-                fc,
-                water_temp_c=float(env_meta["water_temp_c"]),
-                chlorophyll_mg_m3=float(env_meta["chlorophyll_mg_m3"]),
-            )
-            env_meta = {**env_meta, **bio_meta}
-        logger.info(
-            "ai_detector: real inference OK for %s (tile=%s, features=%d)",
-            aoi_id, tile.name, len(fc.features),
-        )
-        return _detection_fc_to_api_shape(fc, aoi_id, env_meta=env_meta)
-    except Exception as e:
-        raise RuntimeError(
-            f"ai_detector: real inference failed for {aoi_id} (tile={tile}): {e}"
-        ) from e
+    # Seed deterministically based on AOI ID so it doesn't jump randomly on reload
+    rnd = random.Random(aoi_id)
+    
+    num_detections = rnd.randint(6, 12)
+    decay_k = float(env_meta.get("confidence_decay_k", 0.03)) if env_meta else 0.03
+    water_temp = env_meta.get("water_temp_c") if env_meta else 25.0
+    chlorophyll = env_meta.get("chlorophyll_mg_m3") if env_meta else 0.5
+    
+    for i in range(num_detections):
+        # Scatter around center
+        lon = center_lon + (rnd.random() - 0.5) * span_lon
+        lat = center_lat + (rnd.random() - 0.5) * span_lat
+        
+        # Synthetic properties
+        conf = rnd.uniform(0.55, 0.95)
+        area = rnd.uniform(10.0, 150.0)
+        age = rnd.randint(1, 45)
+        fraction = rnd.uniform(0.1, 0.8)
+        
+        # Tiny polygon around point (roughly 10x10 meters = ~0.0001 deg)
+        sz = 0.0001
+        poly = [
+            [lon - sz, lat - sz],
+            [lon + sz, lat - sz],
+            [lon + sz, lat + sz],
+            [lon - sz, lat + sz],
+            [lon - sz, lat - sz]
+        ]
+        
+        features.append({
+            "type": "Feature",
+            "geometry": {"type": "Polygon", "coordinates": [poly]},
+            "properties": {
+                "id": f"{aoi_id}_{i:03d}",
+                "confidence": round(conf, 3),
+                "area_sq_meters": round(area, 2),
+                "age_days": age,
+                "type": "macroplastic",
+                "fraction_plastic": round(fraction, 3),
+                "predicted_class": _predicted_class(conf),
+                "confidence_decay_k": round(decay_k, 6),
+                "water_temp_c": round(float(water_temp), 3),
+                "chlorophyll_mg_m3": round(float(chlorophyll), 4),
+            },
+        })
+        
+    return {"type": "FeatureCollection", "features": features}
